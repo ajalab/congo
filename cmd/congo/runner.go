@@ -43,12 +43,11 @@ func (c *Config) Open() (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	// format.Node(os.Stdout, token.NewFileSet(), runnerFile)
 
 	// Load and type-check
 	var loaderConf loader.Config
 	loaderConf.CreateFromFiles(packageRunnerPath, runnerFile)
-	loaderConf.Import("github.com/ajalab/congo")
+	loaderConf.Import(packageCongoPath)
 	loaderProg, err := loaderConf.Load()
 	if err != nil {
 		return nil, err
@@ -166,7 +165,7 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 					&ast.ImportSpec{
 						Path: &ast.BasicLit{
 							Kind:  token.STRING,
-							Value: "\"github.com/ajalab/congo\"",
+							Value: fmt.Sprintf("\"%s\"", packageCongoPath),
 						},
 					},
 				},
@@ -254,56 +253,6 @@ func generateSymbolicArgs(argTypes []types.Type) []ast.Expr {
 	}
 
 	return args
-}
-
-func zeroExpr(ty types.Type) ast.Expr {
-	switch ty := ty.(type) {
-	case *types.Basic:
-		switch ty.Kind() {
-		case types.Bool:
-			return ast.NewIdent("false")
-		case types.Int, types.Int8, types.Int16, types.Int32, types.Int64,
-			types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64,
-			types.Uintptr,
-			types.Float32, types.Float64,
-			types.Complex64, types.Complex128:
-			return &ast.BasicLit{
-				Kind:  token.INT,
-				Value: "0",
-			}
-		case types.String:
-			return &ast.BasicLit{
-				Kind:  token.STRING,
-				Value: "\"\"",
-			}
-		}
-	case *types.Named:
-		return zeroExpr(ty.Underlying())
-	case *types.Struct:
-		n := ty.NumFields()
-		fields := make([]*ast.Field, n)
-		elts := make([]ast.Expr, n)
-		for i := 0; i < n; i++ {
-			fieldName := ty.Field(i).Name()
-			field := &ast.Field{Names: []*ast.Ident{ast.NewIdent(fieldName)}}
-			elt := &ast.KeyValueExpr{
-				Key:   ast.NewIdent(fieldName),
-				Value: zeroExpr(ty.Field(i).Type()),
-			}
-			fields = append(fields, field)
-			elts = append(elts, elt)
-		}
-
-		return &ast.CompositeLit{
-			Type: &ast.StructType{
-				Fields: &ast.FieldList{
-					List: fields,
-				},
-			},
-			Elts: elts,
-		}
-	}
-	panic("unimplemented")
 }
 
 func (program *Program) Run() error {
