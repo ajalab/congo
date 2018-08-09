@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"go/types"
-	"os"
 	"unsafe"
 
 	"github.com/ajalab/congo/cmd/congo/interp"
@@ -19,7 +18,7 @@ type Program struct {
 	symbols       []types.Type
 }
 
-func (program *Program) Run() error {
+func (program *Program) RunWithZeroValues() error {
 	n := len(program.symbols)
 	symbolValues := make([]interp.SymbolicValue, n)
 	for i := 0; i < n; i++ {
@@ -30,8 +29,10 @@ func (program *Program) Run() error {
 		}
 	}
 
-	program.mainFunc.WriteTo(os.Stdout)
+	return program.Run(symbolValues)
+}
 
+func (program *Program) Run(symbolValues []interp.SymbolicValue) error {
 	mode := interp.DisableRecover // interp.EnableTracing
 	interp.Interpret(
 		program.packageRunner,

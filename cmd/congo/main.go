@@ -25,5 +25,5 @@ func main() {
 		log.Fatalf("config.Open: %v", err)
 	}
 
-	program.Run()
+	program.RunWithZeroValues()
 }
