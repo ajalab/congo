@@ -13,6 +13,8 @@ import (
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
+
+	"github.com/pkg/errors"
 )
 
 type Config struct {
@@ -30,7 +32,7 @@ const packageCongoPath = "github.com/ajalab/congo"
 func (c *Config) Open() (*Program, error) {
 	runnerFile, err := generateRunnerFile(c.PackageName, c.FuncName)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}
 
 	// Load and type-check
@@ -39,7 +41,7 @@ func (c *Config) Open() (*Program, error) {
 	loaderConf.Import(packageCongoPath)
 	loaderProg, err := loaderConf.Load()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to load packages")
 	}
 
 	// Convert to SSA form
@@ -130,7 +132,7 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 	// Get argument types of the function
 	argTypes, err := getArgTypes(packageName, funcName)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to get argument types of the function")
 	}
 	args := generateSymbolicArgs(argTypes)
 
@@ -186,7 +188,7 @@ func getArgTypes(packageName string, funcName string) ([]types.Type, error) {
 	loaderConf.Import(packageName)
 	loaderProg, err := loaderConf.Load()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, fmt.Sprintf("failed to load package %s", packageName))
 	}
 	pkg := loaderProg.Package(packageName).Pkg
 	function := pkg.Scope().Lookup(funcName)
