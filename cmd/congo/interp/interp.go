@@ -90,6 +90,9 @@ type interpreter struct {
 	goroutines         int32                // atomically updated
 
 	congoTraceTarget *ssa.Function
+	congoTrace       [][]int
+	// TODO(ajalab) Use mutex to update congoTrace?
+	// congoMutex sync.Mutex
 }
 
 type deferred struct {
@@ -552,8 +555,12 @@ func callSSA(i *interpreter, caller *frame, callpos token.Pos, fn *ssa.Function,
 // control.
 //
 func runFrame(fr *frame) {
+	trace := []int{}
+	tracing := fr.i.congoTraceTarget == fr.fn
+
 	defer func() {
 		if fr.block == nil {
+			fr.i.congoTrace = append(fr.i.congoTrace, trace)
 			return // normal return
 		}
 		if fr.i.mode&DisableRecover != 0 {
@@ -569,6 +576,9 @@ func runFrame(fr *frame) {
 	}()
 
 	for {
+		if tracing {
+			trace = append(trace, fr.block.Index)
+		}
 		if fr.i.mode&EnableTracing != 0 {
 			fmt.Fprintf(os.Stderr, ".%s:\n", fr.block)
 		}
