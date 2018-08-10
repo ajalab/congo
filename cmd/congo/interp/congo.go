@@ -4,6 +4,11 @@ import (
 	"go/types"
 )
 
+type SymbolicValue struct {
+	Value interface{}
+	Type  types.Type
+}
+
 func convertSymbolicValuesToInterpRepr(v interface{}, t types.Type) value {
 	switch t := t.(type) {
 	case *types.Basic:

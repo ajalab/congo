@@ -60,11 +60,6 @@ import (
 
 type continuation int
 
-type SymbolicValue struct {
-	Value interface{}
-	Type  types.Type
-}
-
 const (
 	kNext continuation = iota
 	kReturn
@@ -94,9 +89,7 @@ type interpreter struct {
 	sizes              types.Sizes          // the effective type-sizing function
 	goroutines         int32                // atomically updated
 
-	tracing     bool
-	traceTarget string
-	trace       []*ssa.Instruction
+	congoTraceTarget *ssa.Function
 }
 
 type deferred struct {
@@ -198,22 +191,12 @@ func lookupMethod(i *interpreter, typ types.Type, meth *types.Func) *ssa.Functio
 // record frame.  It returns a continuation value indicating where to
 // read the next instruction from.
 func visitInstr(fr *frame, instr ssa.Instruction) continuation {
-	if fr.i.tracing {
-		switch instr := instr.(type) {
-		case ssa.Value:
-			fmt.Printf("%s = %s\n", instr.Name(), instr)
-		default:
-			fmt.Printf("%s\n", instr)
-		}
-	}
-
 	switch instr := instr.(type) {
 	case *ssa.DebugRef:
 		// no-op
 
 	case *ssa.UnOp:
-		r := unop(instr, fr.get(instr.X))
-		fr.env[instr] = r
+		fr.env[instr] = unop(instr, fr.get(instr.X))
 
 	case *ssa.BinOp:
 		fr.env[instr] = binop(instr.Op, instr.X.Type(), fr.get(instr.X), fr.get(instr.Y))
@@ -480,7 +463,6 @@ func call(i *interpreter, caller *frame, callpos token.Pos, fn value, args []val
 		if fn == nil {
 			panic("call of nil function") // nil of func type
 		}
-		i.tracing = fn.RelString(nil) == i.traceTarget
 
 		return callSSA(i, caller, callpos, fn, args, nil)
 	case *closure:
@@ -527,7 +509,6 @@ func callSSA(i *interpreter, caller *frame, callpos token.Pos, fn *ssa.Function,
 			return ext(fr, args)
 		}
 		if fn.Blocks == nil {
-			fmt.Println("caller", caller.fn)
 			panic("no code for function: " + name)
 		}
 	}
@@ -695,14 +676,13 @@ func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []
 	}
 
 	i := &interpreter{
-		prog:        mainpkg.Prog,
-		globals:     make(map[ssa.Value]*value),
-		mode:        mode,
-		sizes:       sizes,
-		goroutines:  1,
-		tracing:     false,
-		trace:       trace,
-		traceTarget: targetFunc.RelString(nil),
+		prog:       mainpkg.Prog,
+		globals:    make(map[ssa.Value]*value),
+		mode:       mode,
+		sizes:      sizes,
+		goroutines: 1,
+
+		congoTraceTarget: targetFunc,
 	}
 
 	runtimePkg := i.prog.ImportedPackage("runtime")
