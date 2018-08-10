@@ -742,12 +742,12 @@ func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []
 			deleteBodies(pkg, "GOROOT", "gogetenv")
 
 		case "github.com/ajalab/congo":
-			fmt.Println("Overwrite symbol")
 			values := make([]value, len(symbolicValues))
 			for i := 0; i < len(symbolicValues); i++ {
+				t := symbolicValues[i].Type
 				values[i] = iface{
-					v: symbolicValues[i].Value,
-					t: symbolicValues[i].Type,
+					t: t,
+					v: convertSymbolicValuesToInterpRepr(symbolicValues[i].Value, t),
 				}
 			}
 			setGlobal(i, pkg, "Symbols", values)
