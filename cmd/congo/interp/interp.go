@@ -90,7 +90,7 @@ type interpreter struct {
 	goroutines         int32                // atomically updated
 
 	congoTraceTarget *ssa.Function
-	congoTrace       [][]int
+	congoTrace       [][]*ssa.BasicBlock
 	// TODO(ajalab) Use mutex to update congoTrace?
 	// congoMutex sync.Mutex
 }
@@ -555,7 +555,7 @@ func callSSA(i *interpreter, caller *frame, callpos token.Pos, fn *ssa.Function,
 // control.
 //
 func runFrame(fr *frame) {
-	trace := []int{}
+	trace := []*ssa.BasicBlock{}
 	tracing := fr.i.congoTraceTarget == fr.fn
 
 	defer func() {
@@ -579,7 +579,7 @@ func runFrame(fr *frame) {
 
 	for {
 		if tracing {
-			trace = append(trace, fr.block.Index)
+			trace = append(trace, fr.block)
 		}
 		if fr.i.mode&EnableTracing != 0 {
 			fmt.Fprintf(os.Stderr, ".%s:\n", fr.block)
@@ -679,7 +679,7 @@ func deleteBodies(pkg *ssa.Package, except ...string) {
 //
 // The SSA program must include the "runtime" package.
 //
-func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace [][]int, exitCode int) {
+func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace [][]*ssa.BasicBlock, exitCode int) {
 	if syswrite == nil {
 		fmt.Fprintln(os.Stderr, "Interpret: unsupported platform.")
 		return trace, 1
