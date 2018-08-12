@@ -17,9 +17,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Config struct {
-	PackageName string
-	FuncName    string
+type config struct {
+	packageName string
+	funcName    string
 }
 
 func init() {
@@ -29,8 +29,8 @@ func init() {
 const packageRunnerPath = "congomain"
 const packageCongoPath = "github.com/ajalab/congo"
 
-func (c *Config) Open() (*Program, error) {
-	runnerFile, err := generateRunnerFile(c.PackageName, c.FuncName)
+func (c *config) Open() (*program, error) {
+	runnerFile, err := generateRunnerFile(c.packageName, c.funcName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}
@@ -56,7 +56,7 @@ func (c *Config) Open() (*Program, error) {
 			packageRunner = ssaProg.Package(info.Pkg)
 		case packageCongoPath:
 			packageCongo = ssaProg.Package(info.Pkg)
-		case c.PackageName:
+		case c.packageName:
 			packageTarget = ssaProg.Package(info.Pkg)
 		}
 	}
@@ -115,12 +115,12 @@ func (c *Config) Open() (*Program, error) {
 		symbols[subst.int] = subst.Type
 	}
 
-	return &Program{
-		PackageName:   c.PackageName,
-		FuncName:      c.FuncName,
+	return &program{
+		packageName:   c.packageName,
+		funcName:      c.funcName,
 		packageRunner: packageRunner,
 		mainFunc:      mainFunc,
-		targetFunc:    packageTarget.Func(c.FuncName),
+		targetFunc:    packageTarget.Func(c.funcName),
 		symbols:       symbols,
 	}, nil
 }

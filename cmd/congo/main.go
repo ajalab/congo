@@ -15,15 +15,15 @@ func main() {
 		funcName = os.Args[2]
 
 	}
-	config := Config{
-		PackageName: packageName,
-		FuncName:    funcName,
+	conf := config{
+		packageName: packageName,
+		funcName:    funcName,
 	}
 
-	program, err := config.Open()
+	prog, err := conf.Open()
 	if err != nil {
 		log.Fatalf("config.Open: %v", err)
 	}
 
-	program.RunWithZeroValues()
+	prog.RunWithZeroValues()
 }

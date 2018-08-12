@@ -9,39 +9,40 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-type Program struct {
-	PackageName   string
-	FuncName      string
+type program struct {
+	packageName   string
+	funcName      string
 	packageRunner *ssa.Package
 	mainFunc      *ssa.Function
 	targetFunc    *ssa.Function
 	symbols       []types.Type
 }
 
-func (program *Program) RunWithZeroValues() error {
-	n := len(program.symbols)
+func (prog *program) RunWithZeroValues() error {
+	n := len(prog.symbols)
 	symbolValues := make([]interp.SymbolicValue, n)
 	for i := 0; i < n; i++ {
-		ty := program.symbols[i]
+		ty := prog.symbols[i]
 		symbolValues[i] = interp.SymbolicValue{
 			Value: ZeroValue(ty),
 			Type:  ty,
 		}
 	}
 
-	return program.Run(symbolValues)
+	return prog.Run(symbolValues)
 }
 
-func (program *Program) Run(symbolValues []interp.SymbolicValue) error {
+func (prog *program) Run(symbolValues []interp.SymbolicValue) error {
 	mode := interp.DisableRecover // interp.EnableTracing
-	interp.Interpret(
-		program.packageRunner,
-		program.targetFunc,
+	trace, _ := interp.Interpret(
+		prog.packageRunner,
+		prog.targetFunc,
 		symbolValues,
 		mode,
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},
 		"",
 		[]string{})
+	fmt.Println("trace", trace)
 	return nil
 }
 

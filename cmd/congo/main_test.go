@@ -15,18 +15,18 @@ func TestRunWithZeroValue(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		config := Config{
-			PackageName: tc.packageName,
-			FuncName:    tc.funcName,
+		conf := config{
+			packageName: tc.packageName,
+			funcName:    tc.funcName,
 		}
 
-		program, err := config.Open()
+		prog, err := conf.Open()
 		if err != nil {
 			t.Fatalf("config.Open: %v", err)
 		}
 
-		if err = program.RunWithZeroValues(); err != nil {
-			t.Errorf("program.RunWithZeroValue: %v", err)
+		if err = prog.RunWithZeroValues(); err != nil {
+			t.Errorf("prog.RunWithZeroValue: %v", err)
 		}
 	}
 }
