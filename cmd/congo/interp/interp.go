@@ -560,7 +560,9 @@ func runFrame(fr *frame) {
 
 	defer func() {
 		if fr.block == nil {
-			fr.i.congoTrace = append(fr.i.congoTrace, trace)
+			if tracing {
+				fr.i.congoTrace = append(fr.i.congoTrace, trace)
+			}
 			return // normal return
 		}
 		if fr.i.mode&DisableRecover != 0 {
@@ -677,9 +679,7 @@ func deleteBodies(pkg *ssa.Package, except ...string) {
 //
 // The SSA program must include the "runtime" package.
 //
-func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace []*ssa.Instruction, exitCode int) {
-	trace = []*ssa.Instruction{}
-
+func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace [][]int, exitCode int) {
 	if syswrite == nil {
 		fmt.Fprintln(os.Stderr, "Interpret: unsupported platform.")
 		return trace, 1
@@ -776,6 +776,7 @@ func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []
 	if mainFn := mainpkg.Func("main"); mainFn != nil {
 		call(i, nil, token.NoPos, mainFn, nil)
 		exitCode = 0
+		trace = i.congoTrace
 	} else {
 		fmt.Fprintln(os.Stderr, "No main function.")
 		exitCode = 1
