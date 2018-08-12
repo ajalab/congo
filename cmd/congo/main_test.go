@@ -7,11 +7,11 @@ func TestRunWithZeroValue(t *testing.T) {
 		packageName string
 		funcName    string
 	}{
-		{"github.com/ajalab/congo/testdata", "BranchSimple"},
-		{"github.com/ajalab/congo/testdata", "BranchAnd"},
-		{"github.com/ajalab/congo/testdata", "BranchThreeVars"},
-		{"github.com/ajalab/congo/testdata", "BranchTenVars"},
-		{"github.com/ajalab/congo/testdata", "BranchStruct"},
+		{"github.com/ajalab/congo/cmd/congo/testdata", "BranchSimple"},
+		{"github.com/ajalab/congo/cmd/congo/testdata", "BranchAnd"},
+		{"github.com/ajalab/congo/cmd/congo/testdata", "BranchThreeVars"},
+		{"github.com/ajalab/congo/cmd/congo/testdata", "BranchTenVars"},
+		{"github.com/ajalab/congo/cmd/congo/testdata", "BranchStruct"},
 	}
 
 	for _, tc := range testCases {
@@ -22,7 +22,7 @@ func TestRunWithZeroValue(t *testing.T) {
 
 		program, err := config.Open()
 		if err != nil {
-			t.Errorf("config.Open: %v", err)
+			t.Fatalf("config.Open: %v", err)
 		}
 
 		if err = program.RunWithZeroValues(); err != nil {

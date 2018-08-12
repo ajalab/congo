@@ -8,7 +8,7 @@ import (
 func main() {
 	var packageName, funcName string
 	if len(os.Args) <= 2 {
-		packageName = "github.com/ajalab/congo/testdata"
+		packageName = "github.com/ajalab/congo/cmd/congo/testdata"
 		funcName = "BranchThreeVars"
 	} else {
 		packageName = os.Args[1]
@@ -16,8 +16,8 @@ func main() {
 
 	}
 	config := Config{
-		PackageName: packageName, // "github.com/ajalab/congo/testdata",
-		FuncName:    funcName,    // "BranchTenVars",
+		PackageName: packageName,
+		FuncName:    funcName,
 	}
 
 	program, err := config.Open()
