@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"go/types"
 
 	"github.com/ajalab/congo/cmd/congo/interp"
@@ -17,7 +16,7 @@ type program struct {
 	symbols       []types.Type
 }
 
-func (prog *program) RunWithZeroValues() error {
+func (prog *program) RunWithZeroValues() ([][]*ssa.BasicBlock, error) {
 	n := len(prog.symbols)
 	symbolValues := make([]interp.SymbolicValue, n)
 	for i := 0; i < n; i++ {
@@ -31,7 +30,7 @@ func (prog *program) RunWithZeroValues() error {
 	return prog.Run(symbolValues)
 }
 
-func (prog *program) Run(symbolValues []interp.SymbolicValue) error {
+func (prog *program) Run(symbolValues []interp.SymbolicValue) ([][]*ssa.BasicBlock, error) {
 	mode := interp.DisableRecover // interp.EnableTracing
 	trace, _ := interp.Interpret(
 		prog.packageRunner,
@@ -41,6 +40,5 @@ func (prog *program) Run(symbolValues []interp.SymbolicValue) error {
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},
 		"",
 		[]string{})
-	fmt.Println("trace", trace)
-	return nil
+	return trace, nil
 }
