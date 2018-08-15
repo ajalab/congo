@@ -185,7 +185,11 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 }
 
 func getArgTypes(packageName string, funcName string) ([]types.Type, error) {
-	var loaderConf loader.Config
+	// TODO(ajalab):
+	// We only need to load the target package but not its dependencies.
+	loaderConf := loader.Config{
+		TypeCheckFuncBodies: func(_ string) bool { return false },
+	}
 
 	loaderConf.Import(packageName)
 	loaderProg, err := loaderConf.Load()
