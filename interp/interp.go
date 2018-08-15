@@ -731,7 +731,7 @@ func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []
 			setGlobal(i, pkg, "sizeof_C_MStats", uintptr(sz))
 			deleteBodies(pkg, "GOROOT", "gogetenv")
 
-		case "github.com/ajalab/congo":
+		case packageCongoSymbolPath:
 			values := make([]value, len(symbolicValues))
 			for i := 0; i < len(symbolicValues); i++ {
 				t := symbolicValues[i].Type

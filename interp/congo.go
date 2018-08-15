@@ -4,6 +4,8 @@ import (
 	"go/types"
 )
 
+const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
+
 type SymbolicValue struct {
 	Value interface{}
 	Type  types.Type

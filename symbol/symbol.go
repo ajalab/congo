@@ -1,4 +1,4 @@
-package congo
+package symbol
 
 type SymbolType interface{}
 

@@ -1,9 +1,9 @@
-package main
+package congo
 
 import (
 	"go/types"
 
-	"github.com/ajalab/congo/cmd/congo/interp"
+	"github.com/ajalab/congo/interp"
 	"golang.org/x/tools/go/ssa"
 )
 

@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ajalab/congo"
+)
 
 func TestRunWithZeroValue(t *testing.T) {
 	testCases := []struct {
@@ -15,17 +19,17 @@ func TestRunWithZeroValue(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		conf := config{
-			packageName: tc.packageName,
-			funcName:    tc.funcName,
+		conf := congo.Config{
+			PackageName: tc.packageName,
+			FuncName:    tc.funcName,
 		}
 
 		prog, err := conf.Open()
 		if err != nil {
-			t.Fatalf("config.Open: %v", err)
+			t.Fatalf("Config.Open: %v", err)
 		}
 
-		if err = prog.RunWithZeroValues(); err != nil {
+		if _, err = prog.RunWithZeroValues(); err != nil {
 			t.Errorf("prog.RunWithZeroValue: %v", err)
 		}
 	}

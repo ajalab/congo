@@ -1,4 +1,4 @@
-package main
+package congo
 
 import (
 	"fmt"
@@ -17,28 +17,30 @@ import (
 	"github.com/pkg/errors"
 )
 
-type config struct {
-	packageName string
-	funcName    string
+type Config struct {
+	PackageName string
+	FuncName    string
 }
 
 func init() {
 	log.SetFlags(log.Llongfile)
 }
 
+const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
 const packageRunnerPath = "congomain"
-const packageCongoPath = "github.com/ajalab/congo"
 
-func (c *config) Open() (*program, error) {
-	runnerFile, err := generateRunnerFile(c.packageName, c.funcName)
+func (c *Config) Open() (*program, error) {
+	runnerFile, err := generateRunnerFile(c.PackageName, c.FuncName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}
 
+	// format.Node(os.Stdout, token.NewFileSet(), runnerFile)
+
 	// Load and type-check
 	var loaderConf loader.Config
 	loaderConf.CreateFromFiles(packageRunnerPath, runnerFile)
-	loaderConf.Import(packageCongoPath)
+	loaderConf.Import(packageCongoSymbolPath)
 	loaderProg, err := loaderConf.Load()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
@@ -49,25 +51,25 @@ func (c *config) Open() (*program, error) {
 	ssaProg.Build()
 
 	// Find SSA package of the runner
-	var packageRunner, packageCongo, packageTarget *ssa.Package
+	var packageRunner, packageCongoSymbol, packageTarget *ssa.Package
 	for _, info := range loaderProg.AllPackages {
 		switch info.Pkg.Path() {
 		case packageRunnerPath:
 			packageRunner = ssaProg.Package(info.Pkg)
-		case packageCongoPath:
-			packageCongo = ssaProg.Package(info.Pkg)
-		case c.packageName:
+		case packageCongoSymbolPath:
+			packageCongoSymbol = ssaProg.Package(info.Pkg)
+		case c.PackageName:
 			packageTarget = ssaProg.Package(info.Pkg)
 		}
 	}
 
-	if packageRunner == nil || packageCongo == nil || packageTarget == nil {
+	if packageRunner == nil || packageCongoSymbol == nil || packageTarget == nil {
 		// unreachable
-		return nil, fmt.Errorf("runner package or %s does not exist", packageCongoPath)
+		return nil, fmt.Errorf("runner package or %s does not exist", packageCongoSymbolPath)
 	}
 
 	// Find references to congo.Symbol
-	symbolType := packageCongo.Members["SymbolType"].Type()
+	symbolType := packageCongoSymbol.Members["SymbolType"].Type()
 	mainFunc := packageRunner.Func("main")
 	symbolSubstTable := make(map[uint64]struct {
 		int
@@ -116,11 +118,11 @@ func (c *config) Open() (*program, error) {
 	}
 
 	return &program{
-		packageName:   c.packageName,
-		funcName:      c.funcName,
+		packageName:   c.PackageName,
+		funcName:      c.FuncName,
 		packageRunner: packageRunner,
 		mainFunc:      mainFunc,
-		targetFunc:    packageTarget.Func(c.funcName),
+		targetFunc:    packageTarget.Func(c.FuncName),
 		symbols:       symbols,
 	}, nil
 }
@@ -156,7 +158,7 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 					&ast.ImportSpec{
 						Path: &ast.BasicLit{
 							Kind:  token.STRING,
-							Value: fmt.Sprintf("\"%s\"", packageCongoPath),
+							Value: fmt.Sprintf("\"%s\"", packageCongoSymbolPath),
 						},
 					},
 				},
@@ -230,7 +232,7 @@ func generateSymbolicArgs(argTypes []types.Type) []ast.Expr {
 		arg := &ast.TypeAssertExpr{
 			X: &ast.IndexExpr{
 				X: &ast.SelectorExpr{
-					X:   ast.NewIdent("congo"),
+					X:   ast.NewIdent("symbol"),
 					Sel: ast.NewIdent("Symbols"),
 				},
 				Index: &ast.BasicLit{

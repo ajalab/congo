@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
+
+	"github.com/ajalab/congo"
 )
 
 func main() {
@@ -15,16 +18,16 @@ func main() {
 		funcName = os.Args[2]
 
 	}
-	conf := config{
-		packageName: packageName,
-		funcName:    funcName,
+	conf := congo.Config{
+		PackageName: packageName,
+		FuncName:    funcName,
 	}
 
 	prog, err := conf.Open()
 	if err != nil {
-		log.Fatalf("config.Open: %v", err)
+		log.Fatalf("Config.Open: %v", err)
 	}
 
 	trace, _ := prog.RunWithZeroValues()
-	fromTrace(trace)
+	fmt.Println(trace)
 }
