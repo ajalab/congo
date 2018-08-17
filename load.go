@@ -29,7 +29,7 @@ func init() {
 const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
 const packageRunnerPath = "congomain"
 
-func (c *Config) Open() (*program, error) {
+func (c *Config) Open() (*Program, error) {
 	runnerFile, err := generateRunnerFile(c.PackageName, c.FuncName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
@@ -117,7 +117,7 @@ func (c *Config) Open() (*program, error) {
 		symbols[subst.int] = subst.Type
 	}
 
-	return &program{
+	return &Program{
 		packageName:   c.PackageName,
 		funcName:      c.FuncName,
 		packageRunner: packageRunner,

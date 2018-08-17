@@ -28,6 +28,8 @@ func main() {
 		log.Fatalf("Config.Open: %v", err)
 	}
 
+	prog.Dump()
+
 	trace, _ := prog.RunWithZeroValues()
 	fmt.Println(trace)
 }
