@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -28,8 +27,6 @@ func main() {
 		log.Fatalf("Config.Open: %v", err)
 	}
 
-	prog.Dump()
+	prog.Execute()
 
-	trace, _ := prog.RunWithZeroValues()
-	fmt.Println(trace)
 }

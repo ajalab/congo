@@ -1,6 +1,7 @@
 package congo
 
 import (
+	"fmt"
 	"go/types"
 	"os"
 
@@ -19,6 +20,12 @@ type Program struct {
 
 func (prog *Program) Dump() {
 	prog.targetFunc.WriteTo(os.Stdout)
+}
+
+func (prog *Program) Execute() {
+	trace, _ := prog.RunWithZeroValues()
+	fromTrace(prog.targetFunc, trace)
+	fmt.Println(trace)
 }
 
 func (prog *Program) RunWithZeroValues() ([][]*ssa.BasicBlock, error) {
