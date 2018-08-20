@@ -23,9 +23,9 @@ func (prog *Program) Dump() {
 }
 
 func (prog *Program) Execute() {
-	trace, _ := prog.RunWithZeroValues()
-	fromTrace(prog.targetFunc, trace)
-	fmt.Println(trace)
+	traces, _ := prog.RunWithZeroValues()
+	fromTrace(prog.targetFunc, traces[0])
+	fmt.Println(traces)
 }
 
 func (prog *Program) RunWithZeroValues() ([][]*ssa.BasicBlock, error) {

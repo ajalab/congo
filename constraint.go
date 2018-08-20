@@ -19,6 +19,9 @@ type Z3ConstraintSet struct {
 	asts   map[ssa.Value]C.Z3_ast
 	ctx    C.Z3_context
 	solver C.Z3_solver
+
+	currentBlock *ssa.BasicBlock
+	prevBlock    *ssa.BasicBlock
 }
 
 func NewZ3ConstraintSet() *Z3ConstraintSet {
@@ -69,6 +72,12 @@ func (cs *Z3ConstraintSet) addParameter(param *ssa.Parameter) {
 }
 
 func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
+	block := instr.Block()
+	if cs.currentBlock != block {
+		cs.prevBlock = cs.currentBlock
+		cs.currentBlock = block
+	}
+
 	switch instr := instr.(type) {
 	case *ssa.BinOp:
 		var v C.Z3_ast
@@ -89,6 +98,16 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 
 		default:
 			panic("unimplemented")
+		}
+		cs.asts[instr] = v
+	case *ssa.Phi:
+		var v C.Z3_ast
+		for i, pred := range instr.Block().Preds {
+			if pred == cs.prevBlock {
+				// TODO(ajalab) New variable?
+				v = cs.get(instr.Edges[i])
+				break
+			}
 		}
 		cs.asts[instr] = v
 	}
@@ -151,22 +170,20 @@ func (cs *Z3ConstraintSet) solve() {
 	}
 }
 
-func fromTrace(targetFunc *ssa.Function, traces [][]*ssa.BasicBlock) *Z3ConstraintSet {
+func fromTrace(targetFunc *ssa.Function, trace []*ssa.BasicBlock) *Z3ConstraintSet {
 	cs := NewZ3ConstraintSet()
 	defer cs.Close()
 
 	for _, param := range targetFunc.Params {
 		cs.addParameter(param)
 	}
-	for _, trace := range traces {
-		for _, block := range trace {
-			fmt.Printf(".%d:\n", block.Index)
-			for _, instr := range block.Instrs {
-				fmt.Printf("%[1]v: %[1]T\n", instr)
-				cs.addConstraint(instr)
-				if ifInstr, ok := instr.(*ssa.If); ok {
-					cs.addAssertion(ifInstr.Cond)
-				}
+	for _, block := range trace {
+		fmt.Printf(".%d:\n", block.Index)
+		for _, instr := range block.Instrs {
+			fmt.Printf("%[1]v: %[1]T\n", instr)
+			cs.addConstraint(instr)
+			if ifInstr, ok := instr.(*ssa.If); ok {
+				cs.addAssertion(ifInstr.Cond)
 			}
 		}
 	}
