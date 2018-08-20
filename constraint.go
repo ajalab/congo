@@ -151,15 +151,15 @@ func (cs *Z3ConstraintSet) solve() {
 	}
 }
 
-func fromTrace(targetFunc *ssa.Function, trace [][]*ssa.BasicBlock) *Z3ConstraintSet {
+func fromTrace(targetFunc *ssa.Function, traces [][]*ssa.BasicBlock) *Z3ConstraintSet {
 	cs := NewZ3ConstraintSet()
 	defer cs.Close()
 
 	for _, param := range targetFunc.Params {
 		cs.addParameter(param)
 	}
-	for _, blocks := range trace {
-		for _, block := range blocks {
+	for _, trace := range traces {
+		for _, block := range trace {
 			fmt.Printf(".%d:\n", block.Index)
 			for _, instr := range block.Instrs {
 				fmt.Printf("%[1]v: %[1]T\n", instr)
