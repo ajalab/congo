@@ -52,13 +52,13 @@ func (cs *Z3ConstraintSet) Close() {
 	C.Z3_del_context(cs.ctx)
 }
 
-func (cs *Z3ConstraintSet) addParameter(param ssa.Value) {
+func (cs *Z3ConstraintSet) addSymbol(symbol ssa.Value) {
 	var v C.Z3_ast = nil
-	cname := C.CString("congo_param_" + param.Name())
+	cname := C.CString("congo_param_" + symbol.Name())
 	defer C.free(unsafe.Pointer(cname))
-	symbol := C.Z3_mk_string_symbol(cs.ctx, cname)
+	z3symbol := C.Z3_mk_string_symbol(cs.ctx, cname)
 
-	switch ty := param.Type().(type) {
+	switch ty := symbol.Type().(type) {
 	case *types.Basic:
 		switch ty.Kind() {
 		case types.Int:
@@ -71,11 +71,11 @@ func (cs *Z3ConstraintSet) addParameter(param ssa.Value) {
 			fallthrough
 		case types.Int64:
 			sort := C.Z3_mk_int_sort(cs.ctx)
-			v = C.Z3_mk_const(cs.ctx, symbol, sort)
+			v = C.Z3_mk_const(cs.ctx, z3symbol, sort)
 		}
 	}
 	if v != nil {
-		cs.asts[param] = v
+		cs.asts[symbol] = v
 	}
 }
 
@@ -219,11 +219,11 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) {
 	}
 }
 
-func fromTrace(params []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet {
+func fromTrace(symbols []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet {
 	cs := NewZ3ConstraintSet()
 
-	for _, param := range params {
-		cs.addParameter(param)
+	for _, symbol := range symbols {
+		cs.addSymbol(symbol)
 	}
 	for _, trace := range traces {
 		for i, block := range trace {

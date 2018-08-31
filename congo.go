@@ -36,15 +36,6 @@ func (prog *Program) Execute() {
 
 	traces, _ := prog.Run(symbolValues)
 
-	// TODO(ajalab) Change params to *ssa.TypeAssert instead of *ssa.Parameter
-	/*
-		params := []ssa.Value{}
-		targetFunc := prog.targetPackage.Func(prog.funcName)
-		for _, param := range targetFunc.Params {
-			params = append(params, param)
-		}
-	*/
-
 	cs := fromTrace(prog.symbols, traces)
 	defer cs.Close()
 
