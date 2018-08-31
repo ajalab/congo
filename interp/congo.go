@@ -5,6 +5,7 @@ import (
 )
 
 const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
+const packageRunnerPath = "congomain"
 
 type SymbolicValue struct {
 	Value interface{}

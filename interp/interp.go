@@ -89,7 +89,7 @@ type interpreter struct {
 	sizes              types.Sizes          // the effective type-sizing function
 	goroutines         int32                // atomically updated
 
-	congoTraceTarget *ssa.Function
+	congoTraceTarget *ssa.Package
 	congoTrace       [][]*ssa.BasicBlock
 	// TODO(ajalab) Use mutex to update congoTrace?
 	// congoMutex sync.Mutex
@@ -555,13 +555,14 @@ func callSSA(i *interpreter, caller *frame, callpos token.Pos, fn *ssa.Function,
 // control.
 //
 func runFrame(fr *frame) {
-	trace := []*ssa.BasicBlock{}
-	tracing := fr.i.congoTraceTarget == fr.fn
+	// trace := []*ssa.BasicBlock{}
+	pkg := fr.block.Parent().Package()
+	tracing := pkg == fr.i.congoTraceTarget || pkg.Pkg.Path() == packageRunnerPath // fr.i.congoTraceTarget == fr.fn
 
 	defer func() {
 		if fr.block == nil {
 			if tracing {
-				fr.i.congoTrace = append(fr.i.congoTrace, trace)
+				// fr.i.congoTrace = append(fr.i.congoTrace, trace)
 			}
 			return // normal return
 		}
@@ -579,7 +580,7 @@ func runFrame(fr *frame) {
 
 	for {
 		if tracing {
-			trace = append(trace, fr.block)
+			fr.i.congoTrace[0] = append(fr.i.congoTrace[0], fr.block)
 		}
 		if fr.i.mode&EnableTracing != 0 {
 			fmt.Fprintf(os.Stderr, ".%s:\n", fr.block)
@@ -679,7 +680,7 @@ func deleteBodies(pkg *ssa.Package, except ...string) {
 //
 // The SSA program must include the "runtime" package.
 //
-func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace [][]*ssa.BasicBlock, exitCode int) {
+func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace [][]*ssa.BasicBlock, exitCode int) {
 	if syswrite == nil {
 		fmt.Fprintln(os.Stderr, "Interpret: unsupported platform.")
 		return trace, 1
@@ -692,7 +693,8 @@ func Interpret(mainpkg *ssa.Package, targetFunc *ssa.Function, symbolicValues []
 		sizes:      sizes,
 		goroutines: 1,
 
-		congoTraceTarget: targetFunc,
+		congoTraceTarget: targetpkg,
+		congoTrace:       make([][]*ssa.BasicBlock, 1),
 	}
 
 	runtimePkg := i.prog.ImportedPackage("runtime")

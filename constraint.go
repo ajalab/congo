@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"log"
 	"unsafe"
 
 	"golang.org/x/tools/go/ssa"
@@ -22,6 +23,13 @@ type Z3ConstraintSet struct {
 
 	currentBlock *ssa.BasicBlock
 	prevBlock    *ssa.BasicBlock
+
+	assertions []*assertion
+}
+
+type assertion struct {
+	cond C.Z3_ast
+	orig bool
 }
 
 func NewZ3ConstraintSet() *Z3ConstraintSet {
@@ -44,7 +52,7 @@ func (cs *Z3ConstraintSet) Close() {
 	C.Z3_del_context(cs.ctx)
 }
 
-func (cs *Z3ConstraintSet) addParameter(param *ssa.Parameter) {
+func (cs *Z3ConstraintSet) addParameter(param ssa.Value) {
 	var v C.Z3_ast = nil
 	cname := C.CString("congo_param_" + param.Name())
 	defer C.free(unsafe.Pointer(cname))
@@ -83,10 +91,16 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 		var v C.Z3_ast
 		x := cs.get(instr.X)
 		y := cs.get(instr.Y)
+		if x == nil || y == nil {
+			return
+		}
+		fmt.Println("binop", x, y)
 		args := []C.Z3_ast{x, y}
 		switch instr.Op {
 		case token.ADD:
 			v = C.Z3_mk_add(cs.ctx, 2, &args[0])
+		case token.EQL:
+			v = C.Z3_mk_eq(cs.ctx, x, y)
 		case token.LSS:
 			v = C.Z3_mk_lt(cs.ctx, x, y)
 		case token.LEQ:
@@ -97,6 +111,7 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 			v = C.Z3_mk_ge(cs.ctx, x, y)
 
 		default:
+			log.Fatalln("addConstraint: Not implemented BinOp: ", instr)
 			panic("unimplemented")
 		}
 		cs.asts[instr] = v
@@ -110,12 +125,26 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 			}
 		}
 		cs.asts[instr] = v
+	case *ssa.Call:
+		fn, ok := instr.Call.Value.(*ssa.Function)
+		if !ok {
+			return
+		}
+		for i, arg := range instr.Call.Args {
+			ast := cs.get(arg)
+			cs.asts[fn.Params[i]] = ast
+		}
 	}
+
 }
 
-func (cs *Z3ConstraintSet) addAssertion(v ssa.Value) {
-	if a, ok := cs.asts[v]; ok {
-		C.Z3_solver_assert(cs.ctx, cs.solver, a)
+func (cs *Z3ConstraintSet) addAssertion(v ssa.Value, orig bool) {
+	if cond, ok := cs.asts[v]; ok {
+		assert := &assertion{
+			cond: cond,
+			orig: orig,
+		}
+		cs.assertions = append(cs.assertions, assert)
 	}
 }
 
@@ -128,7 +157,9 @@ func (cs *Z3ConstraintSet) get(v ssa.Value) C.Z3_ast {
 	if a, ok := cs.asts[v]; ok {
 		return a
 	}
-	panic("unimplemented")
+	return nil
+	// log.Fatalln("get: Corresponding Z3 AST was not found", v)
+	// panic("unimplemented")
 }
 
 func (cs *Z3ConstraintSet) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
@@ -148,10 +179,28 @@ func (cs *Z3ConstraintSet) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 			return C.Z3_mk_int(cs.ctx, C.int(v.Int64()), sort)
 		}
 	}
+	log.Fatalln("getZ3ConstAST: Unimplemented const value", v)
 	panic("unimplemented")
 }
 
-func (cs *Z3ConstraintSet) solve() {
+func (cs *Z3ConstraintSet) solve(negateAssertion int) {
+	for i := 0; i < negateAssertion; i++ {
+		assert := cs.assertions[i]
+		cond := assert.cond
+		fmt.Printf("%d: %v\n", i, assert)
+		if assert.orig {
+			cond = C.Z3_mk_not(cs.ctx, cond)
+		}
+		C.Z3_solver_assert(cs.ctx, cs.solver, cond)
+	}
+
+	negAssert := cs.assertions[negateAssertion]
+	negCond := negAssert.cond
+	if negAssert.orig {
+		negCond = C.Z3_mk_not(cs.ctx, negCond)
+	}
+	C.Z3_solver_assert(cs.ctx, cs.solver, negCond)
+
 	result := C.Z3_solver_check(cs.ctx, cs.solver)
 
 	switch result {
@@ -170,23 +219,26 @@ func (cs *Z3ConstraintSet) solve() {
 	}
 }
 
-func fromTrace(targetFunc *ssa.Function, trace []*ssa.BasicBlock) *Z3ConstraintSet {
+func fromTrace(params []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet {
 	cs := NewZ3ConstraintSet()
-	defer cs.Close()
 
-	for _, param := range targetFunc.Params {
+	for _, param := range params {
 		cs.addParameter(param)
 	}
-	for _, block := range trace {
-		fmt.Printf(".%d:\n", block.Index)
-		for _, instr := range block.Instrs {
-			fmt.Printf("%[1]v: %[1]T\n", instr)
-			cs.addConstraint(instr)
-			if ifInstr, ok := instr.(*ssa.If); ok {
-				cs.addAssertion(ifInstr.Cond)
+	for _, trace := range traces {
+		for i, block := range trace {
+			fmt.Printf(".%d:\n", block.Index)
+			for _, instr := range block.Instrs {
+				fmt.Printf("%[1]v: %[1]T\n", instr)
+				cs.addConstraint(instr)
+			}
+			lastInstr := block.Instrs[len(block.Instrs)-1]
+			if ifInstr, ok := lastInstr.(*ssa.If); ok {
+				orig := block.Succs[0] == trace[i+1]
+				cs.addAssertion(ifInstr.Cond, orig)
 			}
 		}
 	}
-	cs.solve()
-	return nil
+
+	return cs
 }

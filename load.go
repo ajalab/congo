@@ -51,29 +51,29 @@ func (c *Config) Open() (*Program, error) {
 	ssaProg.Build()
 
 	// Find SSA package of the runner
-	var packageRunner, packageCongoSymbol, packageTarget *ssa.Package
+	var runnerPackage, packageCongoSymbol, targetPackage *ssa.Package
 	for _, info := range loaderProg.AllPackages {
 		switch info.Pkg.Path() {
 		case packageRunnerPath:
-			packageRunner = ssaProg.Package(info.Pkg)
+			runnerPackage = ssaProg.Package(info.Pkg)
 		case packageCongoSymbolPath:
 			packageCongoSymbol = ssaProg.Package(info.Pkg)
 		case c.PackageName:
-			packageTarget = ssaProg.Package(info.Pkg)
+			targetPackage = ssaProg.Package(info.Pkg)
 		}
 	}
 
-	if packageRunner == nil || packageCongoSymbol == nil || packageTarget == nil {
+	if runnerPackage == nil || packageCongoSymbol == nil || targetPackage == nil {
 		// unreachable
 		return nil, fmt.Errorf("runner package or %s does not exist", packageCongoSymbolPath)
 	}
 
 	// Find references to congo.Symbol
 	symbolType := packageCongoSymbol.Members["SymbolType"].Type()
-	mainFunc := packageRunner.Func("main")
+	mainFunc := runnerPackage.Func("main")
 	symbolSubstTable := make(map[uint64]struct {
-		int
-		types.Type
+		i int
+		v ssa.Value
 	})
 	for _, block := range mainFunc.Blocks {
 		for _, instr := range block.Instrs {
@@ -98,32 +98,32 @@ func (c *Config) Open() (*Program, error) {
 
 			i := index.Uint64()
 			if subst, ok := symbolSubstTable[i]; ok {
-				if subst.Type != ty {
+				if subst.v.Type() != ty {
 					return nil, fmt.Errorf("Symbol[%d] is used as multiple types", i)
 				}
-				indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(subst.int)), index.Type())
+				indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(subst.i)), index.Type())
 			} else {
 				newi := len(symbolSubstTable)
 				indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(newi)), index.Type())
 				symbolSubstTable[i] = struct {
-					int
-					types.Type
-				}{newi, ty}
+					i int
+					v ssa.Value
+				}{newi, assertInstr}
 			}
 		}
 	}
-	symbols := make([]types.Type, len(symbolSubstTable))
+	symbols := make([]ssa.Value, len(symbolSubstTable))
 	for _, subst := range symbolSubstTable {
-		symbols[subst.int] = subst.Type
+		symbols[subst.i] = subst.v
 	}
 
 	return &Program{
-		packageName:   c.PackageName,
-		funcName:      c.FuncName,
-		packageRunner: packageRunner,
-		mainFunc:      mainFunc,
-		targetFunc:    packageTarget.Func(c.FuncName),
-		symbols:       symbols,
+		targetPackageName: c.PackageName,
+		funcName:          c.FuncName,
+		runnerPackage:     runnerPackage,
+		targetPackage:     targetPackage,
+		mainFunc:          mainFunc,
+		symbols:           symbols,
 	}, nil
 }
 
