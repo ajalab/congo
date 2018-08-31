@@ -12,7 +12,6 @@ import (
 	"go/token"
 	"go/types"
 	"log"
-	"unsafe"
 
 	"golang.org/x/tools/go/ssa"
 )
@@ -59,11 +58,9 @@ func (cs *Z3ConstraintSet) Close() {
 	C.Z3_del_context(cs.ctx)
 }
 
-func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) {
-	var v C.Z3_ast = nil
-	cname := C.CString("congo_param_" + ssaSymbol.Name())
-	defer C.free(unsafe.Pointer(cname))
-	z3symbol := C.Z3_mk_string_symbol(cs.ctx, cname)
+func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
+	var v C.Z3_ast
+	astName := C.Z3_mk_int_symbol(cs.ctx, C.int(len(cs.symbols)))
 
 	switch ty := ssaSymbol.Type().(type) {
 	case *types.Basic:
@@ -78,8 +75,12 @@ func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) {
 			fallthrough
 		case types.Int64:
 			sort := C.Z3_mk_int_sort(cs.ctx)
-			v = C.Z3_mk_const(cs.ctx, z3symbol, sort)
+			v = C.Z3_mk_const(cs.ctx, astName, sort)
+		default:
+			return fmt.Errorf("unsupported symbol basic kind: %v", ty.Kind())
 		}
+	default:
+		return fmt.Errorf("unsupported symbol type: %T", ty)
 	}
 	if v != nil {
 		cs.asts[ssaSymbol] = v
@@ -89,6 +90,8 @@ func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) {
 		ssa: ssaSymbol,
 		z3:  v,
 	})
+
+	return nil
 }
 
 func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
@@ -202,7 +205,7 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 	for i := 0; i < negateAssertion; i++ {
 		assert := cs.assertions[i]
 		cond := assert.cond
-		if assert.orig {
+		if !assert.orig {
 			cond = C.Z3_mk_not(cs.ctx, cond)
 		}
 		C.Z3_solver_assert(cs.ctx, cs.solver, cond)
@@ -312,6 +315,7 @@ func fromTrace(symbols []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet
 			if ifInstr, ok := lastInstr.(*ssa.If); ok {
 				orig := block.Succs[0] == trace[i+1]
 				cs.addAssertion(ifInstr.Cond, orig)
+				// fmt.Println("assertion ", ifInstr.Cond, orig)
 			}
 		}
 	}
