@@ -113,6 +113,12 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 		switch instr.Op {
 		case token.ADD:
 			v = C.Z3_mk_add(cs.ctx, 2, &args[0])
+		case token.SUB:
+			v = C.Z3_mk_sub(cs.ctx, 2, &args[0])
+		case token.MUL:
+			v = C.Z3_mk_mul(cs.ctx, 2, &args[0])
+		case token.QUO:
+			v = C.Z3_mk_div(cs.ctx, x, y)
 		case token.EQL:
 			v = C.Z3_mk_eq(cs.ctx, x, y)
 		case token.LSS:
