@@ -1,7 +1,6 @@
 package congo
 
 import (
-	"fmt"
 	"go/types"
 	"os"
 
@@ -22,7 +21,7 @@ func (prog *Program) Dump() {
 	prog.targetPackage.Func(prog.funcName).WriteTo(os.Stdout)
 }
 
-func (prog *Program) Execute() {
+func (prog *Program) Execute() error {
 	n := len(prog.symbols)
 	symbolValues := make([]interp.SymbolicValue, n)
 
@@ -34,13 +33,25 @@ func (prog *Program) Execute() {
 		}
 	}
 
-	traces, _ := prog.Run(symbolValues)
+	for i := 0; i < 3; i++ {
+		traces, err := prog.Run(symbolValues)
+		if err != nil {
+			return err
+		}
+		cs := fromTrace(prog.symbols, traces)
+		values, err := cs.solve(len(cs.assertions) - 1)
+		if err != nil {
+			cs.Close()
+			return err
+		}
+		for j, v := range values {
+			symbolValues[j].Value = v
+		}
 
-	cs := fromTrace(prog.symbols, traces)
-	defer cs.Close()
+		cs.Close()
+	}
 
-	cs.solve(len(cs.assertions) - 1)
-	fmt.Println(traces)
+	return nil
 }
 
 func (prog *Program) RunWithZeroValues() ([][]*ssa.BasicBlock, error) {

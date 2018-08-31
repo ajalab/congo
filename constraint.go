@@ -7,6 +7,7 @@ import (
 	"C"
 )
 import (
+	"errors"
 	"fmt"
 	"go/token"
 	"go/types"
@@ -25,11 +26,17 @@ type Z3ConstraintSet struct {
 	prevBlock    *ssa.BasicBlock
 
 	assertions []*assertion
+	symbols    []*symbol
 }
 
 type assertion struct {
 	cond C.Z3_ast
 	orig bool
+}
+
+type symbol struct {
+	z3  C.Z3_ast
+	ssa ssa.Value
 }
 
 func NewZ3ConstraintSet() *Z3ConstraintSet {
@@ -52,13 +59,13 @@ func (cs *Z3ConstraintSet) Close() {
 	C.Z3_del_context(cs.ctx)
 }
 
-func (cs *Z3ConstraintSet) addSymbol(symbol ssa.Value) {
+func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) {
 	var v C.Z3_ast = nil
-	cname := C.CString("congo_param_" + symbol.Name())
+	cname := C.CString("congo_param_" + ssaSymbol.Name())
 	defer C.free(unsafe.Pointer(cname))
 	z3symbol := C.Z3_mk_string_symbol(cs.ctx, cname)
 
-	switch ty := symbol.Type().(type) {
+	switch ty := ssaSymbol.Type().(type) {
 	case *types.Basic:
 		switch ty.Kind() {
 		case types.Int:
@@ -75,8 +82,13 @@ func (cs *Z3ConstraintSet) addSymbol(symbol ssa.Value) {
 		}
 	}
 	if v != nil {
-		cs.asts[symbol] = v
+		cs.asts[ssaSymbol] = v
 	}
+
+	cs.symbols = append(cs.symbols, &symbol{
+		ssa: ssaSymbol,
+		z3:  v,
+	})
 }
 
 func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
@@ -94,7 +106,6 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 		if x == nil || y == nil {
 			return
 		}
-		fmt.Println("binop", x, y)
 		args := []C.Z3_ast{x, y}
 		switch instr.Op {
 		case token.ADD:
@@ -109,6 +120,10 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 			v = C.Z3_mk_gt(cs.ctx, x, y)
 		case token.GEQ:
 			v = C.Z3_mk_ge(cs.ctx, x, y)
+		case token.LAND:
+			v = C.Z3_mk_and(cs.ctx, 2, &args[0])
+		case token.LOR:
+			v = C.Z3_mk_or(cs.ctx, 2, &args[0])
 
 		default:
 			log.Fatalln("addConstraint: Not implemented BinOp: ", instr)
@@ -183,11 +198,10 @@ func (cs *Z3ConstraintSet) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (cs *Z3ConstraintSet) solve(negateAssertion int) {
+func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 	for i := 0; i < negateAssertion; i++ {
 		assert := cs.assertions[i]
 		cond := assert.cond
-		fmt.Printf("%d: %v\n", i, assert)
 		if assert.orig {
 			cond = C.Z3_mk_not(cs.ctx, cond)
 		}
@@ -203,20 +217,84 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) {
 
 	result := C.Z3_solver_check(cs.ctx, cs.solver)
 
+	var err error
 	switch result {
 	case C.Z3_L_FALSE:
-		fmt.Println("unsat")
+		err = errors.New("unsat")
 	case C.Z3_L_TRUE:
-		fmt.Println("sat")
 		m := C.Z3_solver_get_model(cs.ctx, cs.solver)
 		if m != nil {
 			C.Z3_model_inc_ref(cs.ctx, m)
+			defer C.Z3_model_dec_ref(cs.ctx, m)
 		}
-		fmt.Printf("%s\n", C.GoString(C.Z3_model_to_string(cs.ctx, m)))
-		if m != nil {
-			C.Z3_model_dec_ref(cs.ctx, m)
+		values, err := cs.getSymbolValues(m)
+		if err != nil {
+			return nil, err
 		}
+		return values, nil
 	}
+	return nil, err
+}
+
+func (cs *Z3ConstraintSet) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
+	values := make([]interface{}, len(cs.symbols))
+	for i := 0; i < len(cs.symbols); i++ {
+		constDecl := C.Z3_model_get_const_decl(cs.ctx, m, C.uint(i))
+		a := C.Z3_mk_app(cs.ctx, constDecl, 0, nil)
+		var ast C.Z3_ast
+		ok := C.Z3_model_eval(cs.ctx, m, a, C.bool(true), &ast)
+		if !C.bool(ok) {
+			return nil, fmt.Errorf("failed to get symbol[%d] from the model", i)
+		}
+
+		v, err := cs.astToValue(ast, cs.symbols[i].ssa.Type())
+		if err != nil {
+			return nil, err
+		}
+
+		values[i] = v
+	}
+
+	return values, nil
+}
+
+func (cs *Z3ConstraintSet) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) {
+	switch C.Z3_get_ast_kind(cs.ctx, ast) {
+	case C.Z3_NUMERAL_AST:
+		basicTy, ok := ty.(*types.Basic)
+		if !ok {
+			return nil, fmt.Errorf("illegal type")
+		}
+		var u C.uint64_t
+		ok = bool(C.Z3_get_numeral_uint64(cs.ctx, ast, &u))
+		if !ok {
+			return nil, fmt.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
+		}
+		switch basicTy.Kind() {
+		case types.Int:
+			return int(u), nil
+		case types.Int8:
+			return int8(u), nil
+		case types.Int16:
+			return int16(u), nil
+		case types.Int32:
+			return int32(u), nil
+		case types.Int64:
+			return int64(u), nil
+		case types.Uint:
+			return uint(u), nil
+		case types.Uint8:
+			return uint8(u), nil
+		case types.Uint16:
+			return uint16(u), nil
+		case types.Uint32:
+			return uint32(u), nil
+		case types.Uint64:
+			return uint64(u), nil
+		}
+
+	}
+	return nil, fmt.Errorf("cannot convert Z3_AST of type %s", ty)
 }
 
 func fromTrace(symbols []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet {
@@ -227,9 +305,7 @@ func fromTrace(symbols []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet
 	}
 	for _, trace := range traces {
 		for i, block := range trace {
-			fmt.Printf(".%d:\n", block.Index)
 			for _, instr := range block.Instrs {
-				fmt.Printf("%[1]v: %[1]T\n", instr)
 				cs.addConstraint(instr)
 			}
 			lastInstr := block.Instrs[len(block.Instrs)-1]
