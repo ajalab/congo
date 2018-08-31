@@ -2,7 +2,6 @@ package congo
 
 import (
 	"go/types"
-	"os"
 
 	"github.com/ajalab/congo/interp"
 	"golang.org/x/tools/go/ssa"
@@ -17,10 +16,6 @@ type Program struct {
 	symbols           []ssa.Value
 }
 
-func (prog *Program) Dump() {
-	prog.targetPackage.Func(prog.funcName).WriteTo(os.Stdout)
-}
-
 func (prog *Program) Execute() error {
 	n := len(prog.symbols)
 	symbolValues := make([]interp.SymbolicValue, n)
@@ -33,7 +28,7 @@ func (prog *Program) Execute() error {
 		}
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		traces, err := prog.Run(symbolValues)
 		if err != nil {
 			return err
@@ -52,20 +47,6 @@ func (prog *Program) Execute() error {
 	}
 
 	return nil
-}
-
-func (prog *Program) RunWithZeroValues() ([][]*ssa.BasicBlock, error) {
-	n := len(prog.symbols)
-	symbolValues := make([]interp.SymbolicValue, n)
-	for i := 0; i < n; i++ {
-		ty := prog.symbols[i].Type()
-		symbolValues[i] = interp.SymbolicValue{
-			Value: zero(ty),
-			Type:  ty,
-		}
-	}
-
-	return prog.Run(symbolValues)
 }
 
 func (prog *Program) Run(symbolValues []interp.SymbolicValue) ([][]*ssa.BasicBlock, error) {
