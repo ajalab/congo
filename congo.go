@@ -13,15 +13,14 @@ type Program struct {
 	funcName          string
 	runnerPackage     *ssa.Package
 	targetPackage     *ssa.Package
-	mainFunc          *ssa.Function
 	symbols           []ssa.Value
-
-	maxExec uint
 }
 
-func (prog *Program) Execute() error {
+func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 	n := len(prog.symbols)
 	symbolValues := make([]interp.SymbolicValue, n)
+	covered := make(map[*ssa.BasicBlock]struct{})
+	targetFunc := prog.targetPackage.Func(prog.funcName)
 
 	for i := 0; i < n; i++ {
 		ty := prog.symbols[i].Type()
@@ -31,11 +30,25 @@ func (prog *Program) Execute() error {
 		}
 	}
 
-	for i := uint(0); i < prog.maxExec; i++ {
+	for i := uint(0); i < maxExec; i++ {
 		traces, err := prog.Run(symbolValues)
 		if err != nil {
 			return err
 		}
+
+		for _, trace := range traces {
+			for _, b := range trace {
+				if b.Parent() == targetFunc {
+					covered[b] = struct{}{}
+				}
+			}
+		}
+		coverage := float64(len(covered)) / float64(len(targetFunc.Blocks))
+		fmt.Println("coverage", coverage)
+		if coverage >= minCoverage {
+			break
+		}
+
 		cs := fromTrace(prog.symbols, traces)
 		values, err := cs.solve(len(cs.assertions) - 1)
 		if err != nil {

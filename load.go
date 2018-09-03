@@ -20,7 +20,6 @@ import (
 type Config struct {
 	PackageName string
 	FuncName    string
-	MaxExec     uint
 }
 
 func init() {
@@ -123,9 +122,7 @@ func (c *Config) Open() (*Program, error) {
 		funcName:          c.FuncName,
 		runnerPackage:     runnerPackage,
 		targetPackage:     targetPackage,
-		mainFunc:          mainFunc,
 		symbols:           symbols,
-		maxExec:           c.MaxExec,
 	}, nil
 }
 

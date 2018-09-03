@@ -21,7 +21,6 @@ func main() {
 	conf := congo.Config{
 		PackageName: packageName,
 		FuncName:    funcName,
-		MaxExec:     3,
 	}
 
 	prog, err := conf.Open()
@@ -29,7 +28,7 @@ func main() {
 		log.Fatalf("Config.Open: %v", err)
 	}
 
-	if err = prog.Execute(); err != nil {
+	if err = prog.Execute(5, 1.0); err != nil {
 		fmt.Println("failed: ", err)
 	}
 }
