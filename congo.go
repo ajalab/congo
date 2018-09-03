@@ -1,6 +1,7 @@
 package congo
 
 import (
+	"fmt"
 	"go/types"
 
 	"github.com/ajalab/congo/interp"
@@ -14,6 +15,8 @@ type Program struct {
 	targetPackage     *ssa.Package
 	mainFunc          *ssa.Function
 	symbols           []ssa.Value
+
+	maxExec uint
 }
 
 func (prog *Program) Execute() error {
@@ -28,7 +31,7 @@ func (prog *Program) Execute() error {
 		}
 	}
 
-	for i := 0; i < 4; i++ {
+	for i := uint(0); i < prog.maxExec; i++ {
 		traces, err := prog.Run(symbolValues)
 		if err != nil {
 			return err
@@ -39,6 +42,7 @@ func (prog *Program) Execute() error {
 			cs.Close()
 			return err
 		}
+		fmt.Println(values)
 		for j, v := range values {
 			symbolValues[j].Value = v
 		}

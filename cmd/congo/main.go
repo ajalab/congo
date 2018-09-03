@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -20,6 +21,7 @@ func main() {
 	conf := congo.Config{
 		PackageName: packageName,
 		FuncName:    funcName,
+		MaxExec:     3,
 	}
 
 	prog, err := conf.Open()
@@ -27,6 +29,7 @@ func main() {
 		log.Fatalf("Config.Open: %v", err)
 	}
 
-	prog.Execute()
-
+	if err = prog.Execute(); err != nil {
+		fmt.Println("failed: ", err)
+	}
 }
