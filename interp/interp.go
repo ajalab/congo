@@ -555,15 +555,11 @@ func callSSA(i *interpreter, caller *frame, callpos token.Pos, fn *ssa.Function,
 // control.
 //
 func runFrame(fr *frame) {
-	// trace := []*ssa.BasicBlock{}
 	pkg := fr.block.Parent().Package()
-	tracing := pkg == fr.i.congoTraceTarget || pkg.Pkg.Path() == packageRunnerPath // fr.i.congoTraceTarget == fr.fn
+	tracing := pkg == fr.i.congoTraceTarget || pkg.Pkg.Path() == packageRunnerPath
 
 	defer func() {
 		if fr.block == nil {
-			if tracing {
-				// fr.i.congoTrace = append(fr.i.congoTrace, trace)
-			}
 			return // normal return
 		}
 		if fr.i.mode&DisableRecover != 0 {
