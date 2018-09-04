@@ -17,9 +17,8 @@ import (
 )
 
 type Z3ConstraintSet struct {
-	asts   map[ssa.Value]C.Z3_ast
-	ctx    C.Z3_context
-	solver C.Z3_solver
+	asts map[ssa.Value]C.Z3_ast
+	ctx  C.Z3_context
 
 	currentBlock *ssa.BasicBlock
 	prevBlock    *ssa.BasicBlock
@@ -44,18 +43,14 @@ func NewZ3ConstraintSet() *Z3ConstraintSet {
 	defer C.Z3_del_config(cfg)
 
 	ctx := C.Z3_mk_context(cfg)
-	solver := C.Z3_mk_solver(ctx)
-	C.Z3_solver_inc_ref(ctx, solver)
 
 	return &Z3ConstraintSet{
-		asts:   make(map[ssa.Value]C.Z3_ast),
-		ctx:    ctx,
-		solver: solver,
+		asts: make(map[ssa.Value]C.Z3_ast),
+		ctx:  ctx,
 	}
 }
 
 func (cs *Z3ConstraintSet) Close() {
-	C.Z3_solver_dec_ref(cs.ctx, cs.solver)
 	C.Z3_del_context(cs.ctx)
 }
 
@@ -211,13 +206,16 @@ func (cs *Z3ConstraintSet) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 }
 
 func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
+	solver := C.Z3_mk_solver(cs.ctx)
+	C.Z3_solver_inc_ref(cs.ctx, solver)
+	defer C.Z3_solver_dec_ref(cs.ctx, solver)
 	for i := 0; i < negateAssertion; i++ {
 		assert := cs.assertions[i]
 		cond := assert.cond
 		if !assert.orig {
 			cond = C.Z3_mk_not(cs.ctx, cond)
 		}
-		C.Z3_solver_assert(cs.ctx, cs.solver, cond)
+		C.Z3_solver_assert(cs.ctx, solver, cond)
 	}
 
 	negAssert := cs.assertions[negateAssertion]
@@ -225,16 +223,16 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 	if negAssert.orig {
 		negCond = C.Z3_mk_not(cs.ctx, negCond)
 	}
-	C.Z3_solver_assert(cs.ctx, cs.solver, negCond)
+	C.Z3_solver_assert(cs.ctx, solver, negCond)
 
-	result := C.Z3_solver_check(cs.ctx, cs.solver)
+	result := C.Z3_solver_check(cs.ctx, solver)
 
 	var err error
 	switch result {
 	case C.Z3_L_FALSE:
 		err = errors.New("unsat")
 	case C.Z3_L_TRUE:
-		m := C.Z3_solver_get_model(cs.ctx, cs.solver)
+		m := C.Z3_solver_get_model(cs.ctx, solver)
 		if m != nil {
 			C.Z3_model_inc_ref(cs.ctx, m)
 			defer C.Z3_model_dec_ref(cs.ctx, m)
