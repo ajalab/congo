@@ -50,7 +50,20 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 		}
 
 		cs := fromTrace(prog.symbols, traces)
-		values, err := cs.solve(len(cs.assertions) - 1)
+		flip := len(cs.assertions) - 1
+		for j := len(cs.assertions) - 1; j >= 0; j-- {
+			assertion := cs.assertions[j]
+			succs := assertion.instr.Block().Succs
+			b := succs[0]
+			if assertion.orig {
+				b = succs[1]
+			}
+			if _, ok := covered[b]; !ok {
+				flip = j
+				break
+			}
+		}
+		values, err := cs.solve(flip)
 		if err != nil {
 			cs.Close()
 			return err

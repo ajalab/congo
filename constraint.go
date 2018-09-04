@@ -29,8 +29,9 @@ type Z3ConstraintSet struct {
 }
 
 type assertion struct {
-	cond C.Z3_ast
-	orig bool
+	instr ssa.Instruction
+	cond  C.Z3_ast
+	orig  bool
 }
 
 type symbol struct {
@@ -162,11 +163,13 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 
 }
 
-func (cs *Z3ConstraintSet) addAssertion(v ssa.Value, orig bool) {
+func (cs *Z3ConstraintSet) addAssertion(ifInstr *ssa.If, orig bool) {
+	v := ifInstr.Cond
 	if cond, ok := cs.asts[v]; ok {
 		assert := &assertion{
-			cond: cond,
-			orig: orig,
+			instr: ifInstr,
+			cond:  cond,
+			orig:  orig,
 		}
 		cs.assertions = append(cs.assertions, assert)
 	}
@@ -320,7 +323,7 @@ func fromTrace(symbols []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet
 			lastInstr := block.Instrs[len(block.Instrs)-1]
 			if ifInstr, ok := lastInstr.(*ssa.If); ok {
 				orig := block.Succs[0] == trace[i+1]
-				cs.addAssertion(ifInstr.Cond, orig)
+				cs.addAssertion(ifInstr, orig)
 				// fmt.Println("assertion ", ifInstr.Cond, orig)
 			}
 		}
