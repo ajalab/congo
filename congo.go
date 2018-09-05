@@ -31,6 +31,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 	}
 
 	for i := uint(0); i < maxExec; i++ {
+		fmt.Println(symbolValues)
 		traces, err := prog.Run(symbolValues)
 		if err != nil {
 			return err
@@ -50,7 +51,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 		}
 
 		cs := fromTrace(prog.symbols, traces)
-		flip := len(cs.assertions) - 1
+		var values []interface{}
 		for j := len(cs.assertions) - 1; j >= 0; j-- {
 			assertion := cs.assertions[j]
 			succs := assertion.instr.Block().Succs
@@ -59,16 +60,12 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 				b = succs[1]
 			}
 			if _, ok := covered[b]; !ok {
-				flip = j
-				break
+				values, err = cs.solve(j)
+				if err == nil {
+					break
+				}
 			}
 		}
-		values, err := cs.solve(flip)
-		if err != nil {
-			cs.Close()
-			return err
-		}
-		fmt.Println(values)
 		for j, v := range values {
 			symbolValues[j].Value = v
 		}

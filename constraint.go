@@ -56,7 +56,7 @@ func (cs *Z3ConstraintSet) Close() {
 
 func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
 	var v C.Z3_ast
-	astName := C.Z3_mk_int_symbol(cs.ctx, C.int(len(cs.symbols)))
+	symbolID := C.Z3_mk_int_symbol(cs.ctx, C.int(len(cs.symbols)))
 
 	switch ty := ssaSymbol.Type().(type) {
 	case *types.Basic:
@@ -71,7 +71,7 @@ func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
 			fallthrough
 		case types.Int64:
 			sort := C.Z3_mk_int_sort(cs.ctx)
-			v = C.Z3_mk_const(cs.ctx, astName, sort)
+			v = C.Z3_mk_const(cs.ctx, symbolID, sort)
 		default:
 			return fmt.Errorf("unsupported symbol basic kind: %v", ty.Kind())
 		}
@@ -248,8 +248,19 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 
 func (cs *Z3ConstraintSet) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	values := make([]interface{}, len(cs.symbols))
-	for i := 0; i < len(cs.symbols); i++ {
+	for i, symbol := range cs.symbols {
+		values[i] = zero(symbol.ssa.Type())
+	}
+
+	n := int(C.Z3_model_get_num_consts(cs.ctx, m))
+	for i := 0; i < n; i++ {
 		constDecl := C.Z3_model_get_const_decl(cs.ctx, m, C.uint(i))
+		symbolID := C.Z3_get_decl_name(cs.ctx, constDecl)
+		if k := C.Z3_get_symbol_kind(cs.ctx, symbolID); k != C.Z3_INT_SYMBOL {
+			return nil, errors.New("Z3_symbol should be int value")
+		}
+		idx := int(C.Z3_get_symbol_int(cs.ctx, symbolID))
+
 		a := C.Z3_mk_app(cs.ctx, constDecl, 0, nil)
 		var ast C.Z3_ast
 		ok := C.Z3_model_eval(cs.ctx, m, a, C.bool(true), &ast)
@@ -257,12 +268,12 @@ func (cs *Z3ConstraintSet) getSymbolValues(m C.Z3_model) ([]interface{}, error) 
 			return nil, fmt.Errorf("failed to get symbol[%d] from the model", i)
 		}
 
-		v, err := cs.astToValue(ast, cs.symbols[i].ssa.Type())
+		v, err := cs.astToValue(ast, cs.symbols[idx].ssa.Type())
 		if err != nil {
 			return nil, err
 		}
 
-		values[i] = v
+		values[idx] = v
 	}
 
 	return values, nil
@@ -322,7 +333,6 @@ func fromTrace(symbols []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet
 			if ifInstr, ok := lastInstr.(*ssa.If); ok {
 				orig := block.Succs[0] == trace[i+1]
 				cs.addAssertion(ifInstr, orig)
-				// fmt.Println("assertion ", ifInstr.Cond, orig)
 			}
 		}
 	}
