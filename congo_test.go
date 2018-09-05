@@ -55,7 +55,12 @@ func TestExecute(t *testing.T) {
 	}{
 		{"github.com/ajalab/congo/testdata", "Max2", 2, 1},
 		{"github.com/ajalab/congo/testdata", "Min2", 2, 1},
-		{"github.com/ajalab/congo/testdata", "Max3", 5, 1},
+		{"github.com/ajalab/congo/testdata", "Max3", 4, 1},
+		{"github.com/ajalab/congo/testdata", "Min3", 4, 1},
+		{"github.com/ajalab/congo/testdata", "UMax2", 2, 1},
+		{"github.com/ajalab/congo/testdata", "UMin2", 2, 1},
+		{"github.com/ajalab/congo/testdata", "UMax3", 4, 1},
+		{"github.com/ajalab/congo/testdata", "UMin3", 4, 1},
 	}
 
 	for _, tc := range testCases {
