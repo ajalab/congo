@@ -16,11 +16,16 @@ type Program struct {
 	symbols           []ssa.Value
 }
 
-func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
+type ExecuteResult struct {
+	Coverage float64
+}
+
+func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
 	symbolValues := make([]interp.SymbolicValue, n)
 	covered := make(map[*ssa.BasicBlock]struct{})
 	targetFunc := prog.targetPackage.Func(prog.funcName)
+	var coverage float64
 
 	for i := 0; i < n; i++ {
 		ty := prog.symbols[i].Type()
@@ -34,7 +39,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 		fmt.Println(symbolValues)
 		traces, err := prog.Run(symbolValues)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		for _, trace := range traces {
@@ -44,9 +49,9 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 				}
 			}
 		}
-		coverage := float64(len(covered)) / float64(len(targetFunc.Blocks))
+		coverage = float64(len(covered)) / float64(len(targetFunc.Blocks))
 		fmt.Println("coverage", coverage)
-		if coverage >= minCoverage {
+		if coverage >= minCoverage || i == maxExec-1 {
 			break
 		}
 
@@ -73,7 +78,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) error {
 		cs.Close()
 	}
 
-	return nil
+	return &ExecuteResult{Coverage: coverage}, nil
 }
 
 func (prog *Program) Run(symbolValues []interp.SymbolicValue) ([][]*ssa.BasicBlock, error) {
