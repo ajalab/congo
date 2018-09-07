@@ -3,6 +3,7 @@ package congo
 import (
 	"fmt"
 	"go/types"
+	"log"
 
 	"github.com/ajalab/congo/interp"
 	"golang.org/x/tools/go/ssa"
@@ -68,6 +69,10 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				values, err = cs.solve(j)
 				if err == nil {
 					break
+				} else if _, ok := err.(UnsatError); ok {
+					log.Println("unsat")
+				} else {
+					return nil, err
 				}
 			}
 		}

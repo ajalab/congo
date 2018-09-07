@@ -38,6 +38,12 @@ type symbol struct {
 	ssa ssa.Value
 }
 
+type UnsatError struct{}
+
+func (ue UnsatError) Error() string {
+	return "unsat"
+}
+
 func NewZ3ConstraintSet() *Z3ConstraintSet {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
@@ -60,20 +66,15 @@ func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
 
 	switch ty := ssaSymbol.Type().(type) {
 	case *types.Basic:
-		switch ty.Kind() {
-		case types.Int:
+		info := ty.Info()
+		switch {
+		case info&types.IsInteger > 0:
 			fallthrough
-		case types.Int8:
-			fallthrough
-		case types.Int16:
-			fallthrough
-		case types.Int32:
-			fallthrough
-		case types.Int64:
-			sort := C.Z3_mk_int_sort(cs.ctx)
+		case info&types.IsUnsigned > 0:
+			sort := C.Z3_mk_bv_sort(cs.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
 			v = C.Z3_mk_const(cs.ctx, symbolID, sort)
 		default:
-			return fmt.Errorf("unsupported symbol basic kind: %v", ty.Kind())
+			return fmt.Errorf("unsupported basic type: %v", ty)
 		}
 	default:
 		return fmt.Errorf("unsupported symbol type: %T", ty)
@@ -90,6 +91,154 @@ func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
 	return nil
 }
 
+func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeAdd: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		return C.Z3_mk_bvadd(ctx, x, y)
+	default:
+		log.Fatalf("z3MakeAdd: not implemented: %T\n", ty)
+		panic("unimplemented")
+	}
+}
+
+func z3MakeSub(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeSub: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		return C.Z3_mk_bvsub(ctx, x, y)
+	default:
+		log.Fatalf("z3MakeSub: not implemented: %T\n", ty)
+		panic("unimplemented")
+	}
+}
+
+func z3MakeMul(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeMul: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		return C.Z3_mk_bvmul(ctx, x, y)
+	default:
+		log.Fatalf("z3MakeMul: not implemented: %T\n", ty)
+		panic("unimplemented")
+	}
+}
+
+func z3MakeDiv(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeDiv: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		if info&types.IsUnsigned > 0 {
+			return C.Z3_mk_bvudiv(ctx, x, y)
+		} else {
+			return C.Z3_mk_bvsdiv(ctx, x, y)
+		}
+	default:
+		log.Fatalf("z3MakeDiv: not implemented info: %v", basicTy.Kind())
+		panic("unimplemented")
+	}
+}
+
+func z3MakeLt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeLt: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		if info&types.IsUnsigned > 0 {
+			return C.Z3_mk_bvult(ctx, x, y)
+		} else {
+			return C.Z3_mk_bvslt(ctx, x, y)
+		}
+	default:
+		log.Fatalf("z3MakeLt: not implemented info: %v", basicTy.Kind())
+		panic("unimplemented")
+	}
+}
+
+func z3MakeLe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeLe: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		if info&types.IsUnsigned > 0 {
+			return C.Z3_mk_bvule(ctx, x, y)
+		} else {
+			return C.Z3_mk_bvsle(ctx, x, y)
+		}
+	default:
+		log.Fatalf("z3MakeLe: not implemented info: %v", basicTy.Kind())
+		panic("unimplemented")
+	}
+}
+
+func z3MakeGt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeGt: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		if info&types.IsUnsigned > 0 {
+			return C.Z3_mk_bvugt(ctx, x, y)
+		} else {
+			return C.Z3_mk_bvsgt(ctx, x, y)
+		}
+	default:
+		log.Fatalf("z3MakeGt: not implemented info: %v", basicTy.Kind())
+		panic("unimplemented")
+	}
+}
+
+func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Fatalf("z3MakeGe: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		if info&types.IsUnsigned > 0 {
+			return C.Z3_mk_bvuge(ctx, x, y)
+		} else {
+			return C.Z3_mk_bvsge(ctx, x, y)
+		}
+	default:
+		log.Fatalf("z3MakeGe: not implemented info: %v", basicTy.Kind())
+		panic("unimplemented")
+	}
+}
+
 func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 	block := instr.Block()
 	if cs.currentBlock != block {
@@ -102,29 +251,30 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 		var v C.Z3_ast
 		x := cs.get(instr.X)
 		y := cs.get(instr.Y)
+		ty := instr.X.Type()
 		if x == nil || y == nil {
 			return
 		}
 		args := []C.Z3_ast{x, y}
 		switch instr.Op {
 		case token.ADD:
-			v = C.Z3_mk_add(cs.ctx, 2, &args[0])
+			v = z3MakeAdd(cs.ctx, x, y, ty)
 		case token.SUB:
-			v = C.Z3_mk_sub(cs.ctx, 2, &args[0])
+			v = z3MakeSub(cs.ctx, x, y, ty)
 		case token.MUL:
-			v = C.Z3_mk_mul(cs.ctx, 2, &args[0])
+			v = z3MakeMul(cs.ctx, x, y, ty)
 		case token.QUO:
-			v = C.Z3_mk_div(cs.ctx, x, y)
+			v = z3MakeDiv(cs.ctx, x, y, ty)
 		case token.EQL:
 			v = C.Z3_mk_eq(cs.ctx, x, y)
 		case token.LSS:
-			v = C.Z3_mk_lt(cs.ctx, x, y)
+			v = z3MakeLt(cs.ctx, x, y, ty)
 		case token.LEQ:
-			v = C.Z3_mk_le(cs.ctx, x, y)
+			v = z3MakeLe(cs.ctx, x, y, ty)
 		case token.GTR:
-			v = C.Z3_mk_gt(cs.ctx, x, y)
+			v = z3MakeGt(cs.ctx, x, y, ty)
 		case token.GEQ:
-			v = C.Z3_mk_ge(cs.ctx, x, y)
+			v = z3MakeGe(cs.ctx, x, y, ty)
 		case token.LAND:
 			v = C.Z3_mk_and(cs.ctx, 2, &args[0])
 		case token.LOR:
@@ -187,18 +337,15 @@ func (cs *Z3ConstraintSet) get(v ssa.Value) C.Z3_ast {
 func (cs *Z3ConstraintSet) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 	switch ty := v.Type().(type) {
 	case *types.Basic:
-		switch ty.Kind() {
-		case types.Int:
-			fallthrough
-		case types.Int8:
-			fallthrough
-		case types.Int16:
-			fallthrough
-		case types.Int32:
-			fallthrough
-		case types.Int64:
-			sort := C.Z3_mk_int_sort(cs.ctx)
+		switch ty.Info() {
+		case types.IsInteger:
+			size := sizeOfBasicKind(ty.Kind())
+			sort := C.Z3_mk_bv_sort(cs.ctx, C.uint(size))
 			return C.Z3_mk_int(cs.ctx, C.int(v.Int64()), sort)
+		case types.IsUnsigned:
+			size := sizeOfBasicKind(ty.Kind())
+			sort := C.Z3_mk_bv_sort(cs.ctx, C.uint(size))
+			return C.Z3_mk_unsigned_int(cs.ctx, C.uint(v.Uint64()), sort)
 		}
 	}
 	log.Fatalln("getZ3ConstAST: Unimplemented const value", v)
@@ -227,12 +374,13 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 
 	result := C.Z3_solver_check(cs.ctx, solver)
 
-	var err error
 	switch result {
 	case C.Z3_L_FALSE:
-		err = errors.New("unsat")
+		return nil, UnsatError{}
 	case C.Z3_L_TRUE:
 		m := C.Z3_solver_get_model(cs.ctx, solver)
+		fmt.Println(C.GoString(C.Z3_solver_to_string(cs.ctx, solver)))
+		fmt.Println(C.GoString(C.Z3_model_to_string(cs.ctx, m)))
 		if m != nil {
 			C.Z3_model_inc_ref(cs.ctx, m)
 			defer C.Z3_model_dec_ref(cs.ctx, m)
@@ -242,8 +390,9 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 			return nil, err
 		}
 		return values, nil
+	default:
+		return nil, fmt.Errorf("failed to solve: %v", result)
 	}
-	return nil, err
 }
 
 func (cs *Z3ConstraintSet) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
@@ -287,7 +436,12 @@ func (cs *Z3ConstraintSet) astToValue(ast C.Z3_ast, ty types.Type) (interface{},
 			return nil, fmt.Errorf("illegal type")
 		}
 		var u C.uint64_t
+		isSigned := false
+		if basicTy.Info() == types.IsUnsigned {
+			isSigned = true
+		}
 		ok = bool(C.Z3_get_numeral_uint64(cs.ctx, ast, &u))
+		fmt.Println(C.GoString(C.Z3_ast_to_string(cs.ctx, ast)), isSigned)
 		if !ok {
 			return nil, fmt.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
 		}

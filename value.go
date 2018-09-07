@@ -93,3 +93,31 @@ func zero(ty types.Type) interface{} {
 
 	panic(fmt.Sprint("zero: unexpected ", ty))
 }
+
+const intSize = 32 << (^uint(0) >> 63)
+
+func sizeOfBasicKind(k types.BasicKind) uint {
+	switch k {
+	case types.Int:
+		fallthrough
+	case types.Uint:
+		return intSize
+	case types.Int8:
+		fallthrough
+	case types.Uint8:
+		return 8
+	case types.Int16:
+		fallthrough
+	case types.Uint16:
+		return 16
+	case types.Int32:
+		fallthrough
+	case types.Uint32:
+		return 32
+	case types.Int64:
+		fallthrough
+	case types.Uint64:
+		return 64
+	}
+	return 0
+}
