@@ -47,9 +47,11 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			for _, b := range trace {
 				if b.Parent() == targetFunc {
 					covered[b] = struct{}{}
+					fmt.Printf("%s ", b)
 				}
 			}
 		}
+		fmt.Println()
 		coverage = float64(len(covered)) / float64(len(targetFunc.Blocks))
 		fmt.Println("coverage", coverage)
 		if coverage >= minCoverage || i == maxExec-1 {
@@ -57,7 +59,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		}
 
 		cs := fromTrace(prog.symbols, traces)
-		var values []interface{}
+		queue, queueAfter := make([]int, 0), make([]int, 0)
 		for j := len(cs.assertions) - 1; j >= 0; j-- {
 			assertion := cs.assertions[j]
 			succs := assertion.instr.Block().Succs
@@ -66,14 +68,23 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				b = succs[1]
 			}
 			if _, ok := covered[b]; !ok {
-				values, err = cs.solve(j)
-				if err == nil {
-					break
-				} else if _, ok := err.(UnsatError); ok {
-					log.Println("unsat")
-				} else {
-					return nil, err
-				}
+				queue = append(queue, j)
+			} else {
+				queueAfter = append(queueAfter, j)
+			}
+		}
+		queue = append(queue, queueAfter...)
+
+		var values []interface{}
+		for _, j := range queue {
+			fmt.Println("negate assertion", j)
+			values, err = cs.solve(j)
+			if err == nil {
+				break
+			} else if _, ok := err.(UnsatError); ok {
+				log.Println("unsat")
+			} else {
+				return nil, err
 			}
 		}
 		for j, v := range values {
