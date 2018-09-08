@@ -69,8 +69,6 @@ func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
 		info := ty.Info()
 		switch {
 		case info&types.IsInteger > 0:
-			fallthrough
-		case info&types.IsUnsigned > 0:
 			sort := C.Z3_mk_bv_sort(cs.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
 			v = C.Z3_mk_const(cs.ctx, symbolID, sort)
 		default:
@@ -374,12 +372,12 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 
 	result := C.Z3_solver_check(cs.ctx, solver)
 
+	fmt.Println(C.GoString(C.Z3_solver_to_string(cs.ctx, solver)))
 	switch result {
 	case C.Z3_L_FALSE:
 		return nil, UnsatError{}
 	case C.Z3_L_TRUE:
 		m := C.Z3_solver_get_model(cs.ctx, solver)
-		fmt.Println(C.GoString(C.Z3_solver_to_string(cs.ctx, solver)))
 		fmt.Println(C.GoString(C.Z3_model_to_string(cs.ctx, m)))
 		if m != nil {
 			C.Z3_model_inc_ref(cs.ctx, m)
@@ -436,12 +434,7 @@ func (cs *Z3ConstraintSet) astToValue(ast C.Z3_ast, ty types.Type) (interface{},
 			return nil, fmt.Errorf("illegal type")
 		}
 		var u C.uint64_t
-		isSigned := false
-		if basicTy.Info() == types.IsUnsigned {
-			isSigned = true
-		}
 		ok = bool(C.Z3_get_numeral_uint64(cs.ctx, ast, &u))
-		fmt.Println(C.GoString(C.Z3_ast_to_string(cs.ctx, ast)), isSigned)
 		if !ok {
 			return nil, fmt.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
 		}
