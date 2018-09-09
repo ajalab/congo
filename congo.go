@@ -7,6 +7,8 @@ import (
 
 	"github.com/ajalab/congo/interp"
 	"golang.org/x/tools/go/ssa"
+
+	"github.com/pkg/errors"
 )
 
 type Program struct {
@@ -35,7 +37,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	for i := uint(0); i < maxExec; i++ {
 		traces, err := prog.Run(values)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "prog.Execute: failed to run with symbol values %v", values)
 		}
 
 		for _, trace := range traces {
@@ -78,7 +80,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			} else if _, ok := err.(UnsatError); ok {
 				log.Println("unsat")
 			} else {
-				return nil, err
+				return nil, errors.Wrap(err, "failed to solve assertions")
 			}
 		}
 

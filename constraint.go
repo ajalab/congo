@@ -7,12 +7,12 @@ import (
 	"C"
 )
 import (
-	"errors"
 	"fmt"
 	"go/token"
 	"go/types"
 	"log"
 
+	"github.com/pkg/errors"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -385,7 +385,7 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 		}
 		values, err := cs.getSymbolValues(m)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "solve: failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(cs.ctx, m)))
 		}
 		return values, nil
 	default:
@@ -417,7 +417,7 @@ func (cs *Z3ConstraintSet) getSymbolValues(m C.Z3_model) ([]interface{}, error) 
 
 		v, err := cs.astToValue(ast, cs.symbols[idx].ssa.Type())
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
 		}
 
 		values[idx] = v
