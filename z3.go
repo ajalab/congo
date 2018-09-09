@@ -16,7 +16,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-type Z3ConstraintSet struct {
+type Z3Solver struct {
 	asts map[ssa.Value]C.Z3_ast
 	ctx  C.Z3_context
 
@@ -44,33 +44,48 @@ func (ue UnsatError) Error() string {
 	return "unsat"
 }
 
-func NewZ3ConstraintSet() *Z3ConstraintSet {
+func NewZ3Solver(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
 
 	ctx := C.Z3_mk_context(cfg)
-
-	return &Z3ConstraintSet{
+	s := &Z3Solver{
 		asts: make(map[ssa.Value]C.Z3_ast),
 		ctx:  ctx,
 	}
+
+	for _, symbol := range symbols {
+		s.addSymbol(symbol)
+	}
+	for i, block := range trace {
+		for _, instr := range block.Instrs {
+			s.addConstraint(instr)
+		}
+		lastInstr := block.Instrs[len(block.Instrs)-1]
+		if ifInstr, ok := lastInstr.(*ssa.If); ok {
+			orig := block.Succs[0] == trace[i+1]
+			s.addAssertion(ifInstr, orig)
+		}
+	}
+
+	return s
 }
 
-func (cs *Z3ConstraintSet) Close() {
-	C.Z3_del_context(cs.ctx)
+func (s *Z3Solver) Close() {
+	C.Z3_del_context(s.ctx)
 }
 
-func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
+func (s *Z3Solver) addSymbol(ssaSymbol ssa.Value) error {
 	var v C.Z3_ast
-	symbolID := C.Z3_mk_int_symbol(cs.ctx, C.int(len(cs.symbols)))
+	symbolID := C.Z3_mk_int_symbol(s.ctx, C.int(len(s.symbols)))
 
 	switch ty := ssaSymbol.Type().(type) {
 	case *types.Basic:
 		info := ty.Info()
 		switch {
 		case info&types.IsInteger > 0:
-			sort := C.Z3_mk_bv_sort(cs.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
-			v = C.Z3_mk_const(cs.ctx, symbolID, sort)
+			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+			v = C.Z3_mk_const(s.ctx, symbolID, sort)
 		default:
 			return fmt.Errorf("unsupported basic type: %v", ty)
 		}
@@ -78,10 +93,10 @@ func (cs *Z3ConstraintSet) addSymbol(ssaSymbol ssa.Value) error {
 		return fmt.Errorf("unsupported symbol type: %T", ty)
 	}
 	if v != nil {
-		cs.asts[ssaSymbol] = v
+		s.asts[ssaSymbol] = v
 	}
 
-	cs.symbols = append(cs.symbols, &symbol{
+	s.symbols = append(s.symbols, &symbol{
 		ssa: ssaSymbol,
 		z3:  v,
 	})
@@ -237,18 +252,18 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 }
 
-func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
+func (s *Z3Solver) addConstraint(instr ssa.Instruction) {
 	block := instr.Block()
-	if cs.currentBlock != block {
-		cs.prevBlock = cs.currentBlock
-		cs.currentBlock = block
+	if s.currentBlock != block {
+		s.prevBlock = s.currentBlock
+		s.currentBlock = block
 	}
 
 	switch instr := instr.(type) {
 	case *ssa.BinOp:
 		var v C.Z3_ast
-		x := cs.get(instr.X)
-		y := cs.get(instr.Y)
+		x := s.get(instr.X)
+		y := s.get(instr.Y)
 		ty := instr.X.Type()
 		if x == nil || y == nil {
 			return
@@ -256,75 +271,75 @@ func (cs *Z3ConstraintSet) addConstraint(instr ssa.Instruction) {
 		args := []C.Z3_ast{x, y}
 		switch instr.Op {
 		case token.ADD:
-			v = z3MakeAdd(cs.ctx, x, y, ty)
+			v = z3MakeAdd(s.ctx, x, y, ty)
 		case token.SUB:
-			v = z3MakeSub(cs.ctx, x, y, ty)
+			v = z3MakeSub(s.ctx, x, y, ty)
 		case token.MUL:
-			v = z3MakeMul(cs.ctx, x, y, ty)
+			v = z3MakeMul(s.ctx, x, y, ty)
 		case token.QUO:
-			v = z3MakeDiv(cs.ctx, x, y, ty)
+			v = z3MakeDiv(s.ctx, x, y, ty)
 		case token.EQL:
-			v = C.Z3_mk_eq(cs.ctx, x, y)
+			v = C.Z3_mk_eq(s.ctx, x, y)
 		case token.LSS:
-			v = z3MakeLt(cs.ctx, x, y, ty)
+			v = z3MakeLt(s.ctx, x, y, ty)
 		case token.LEQ:
-			v = z3MakeLe(cs.ctx, x, y, ty)
+			v = z3MakeLe(s.ctx, x, y, ty)
 		case token.GTR:
-			v = z3MakeGt(cs.ctx, x, y, ty)
+			v = z3MakeGt(s.ctx, x, y, ty)
 		case token.GEQ:
-			v = z3MakeGe(cs.ctx, x, y, ty)
+			v = z3MakeGe(s.ctx, x, y, ty)
 		case token.LAND:
-			v = C.Z3_mk_and(cs.ctx, 2, &args[0])
+			v = C.Z3_mk_and(s.ctx, 2, &args[0])
 		case token.LOR:
-			v = C.Z3_mk_or(cs.ctx, 2, &args[0])
+			v = C.Z3_mk_or(s.ctx, 2, &args[0])
 
 		default:
 			log.Fatalln("addConstraint: Not implemented BinOp: ", instr)
 			panic("unimplemented")
 		}
-		cs.asts[instr] = v
+		s.asts[instr] = v
 	case *ssa.Phi:
 		var v C.Z3_ast
 		for i, pred := range instr.Block().Preds {
-			if pred == cs.prevBlock {
+			if pred == s.prevBlock {
 				// TODO(ajalab) New variable?
-				v = cs.get(instr.Edges[i])
+				v = s.get(instr.Edges[i])
 				break
 			}
 		}
-		cs.asts[instr] = v
+		s.asts[instr] = v
 	case *ssa.Call:
 		fn, ok := instr.Call.Value.(*ssa.Function)
 		if !ok {
 			return
 		}
 		for i, arg := range instr.Call.Args {
-			ast := cs.get(arg)
-			cs.asts[fn.Params[i]] = ast
+			ast := s.get(arg)
+			s.asts[fn.Params[i]] = ast
 		}
 	}
 
 }
 
-func (cs *Z3ConstraintSet) addAssertion(ifInstr *ssa.If, orig bool) {
+func (s *Z3Solver) addAssertion(ifInstr *ssa.If, orig bool) {
 	v := ifInstr.Cond
-	if cond, ok := cs.asts[v]; ok {
+	if cond, ok := s.asts[v]; ok {
 		assert := &assertion{
 			instr: ifInstr,
 			cond:  cond,
 			orig:  orig,
 		}
-		cs.assertions = append(cs.assertions, assert)
+		s.assertions = append(s.assertions, assert)
 	}
 }
 
-func (cs *Z3ConstraintSet) get(v ssa.Value) C.Z3_ast {
+func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 	switch v := v.(type) {
 	case *ssa.Const:
-		return cs.getZ3ConstAST(v)
+		return s.getZ3ConstAST(v)
 	}
 
-	if a, ok := cs.asts[v]; ok {
+	if a, ok := s.asts[v]; ok {
 		return a
 	}
 	return nil
@@ -332,60 +347,60 @@ func (cs *Z3ConstraintSet) get(v ssa.Value) C.Z3_ast {
 	// panic("unimplemented")
 }
 
-func (cs *Z3ConstraintSet) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
+func (s *Z3Solver) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 	switch ty := v.Type().(type) {
 	case *types.Basic:
 		switch ty.Info() {
 		case types.IsInteger:
 			size := sizeOfBasicKind(ty.Kind())
-			sort := C.Z3_mk_bv_sort(cs.ctx, C.uint(size))
-			return C.Z3_mk_int(cs.ctx, C.int(v.Int64()), sort)
+			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(size))
+			return C.Z3_mk_int(s.ctx, C.int(v.Int64()), sort)
 		case types.IsUnsigned:
 			size := sizeOfBasicKind(ty.Kind())
-			sort := C.Z3_mk_bv_sort(cs.ctx, C.uint(size))
-			return C.Z3_mk_unsigned_int(cs.ctx, C.uint(v.Uint64()), sort)
+			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(size))
+			return C.Z3_mk_unsigned_int(s.ctx, C.uint(v.Uint64()), sort)
 		}
 	}
 	log.Fatalln("getZ3ConstAST: Unimplemented const value", v)
 	panic("unimplemented")
 }
 
-func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
-	solver := C.Z3_mk_solver(cs.ctx)
-	C.Z3_solver_inc_ref(cs.ctx, solver)
-	defer C.Z3_solver_dec_ref(cs.ctx, solver)
+func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
+	solver := C.Z3_mk_solver(s.ctx)
+	C.Z3_solver_inc_ref(s.ctx, solver)
+	defer C.Z3_solver_dec_ref(s.ctx, solver)
 	for i := 0; i < negateAssertion; i++ {
-		assert := cs.assertions[i]
+		assert := s.assertions[i]
 		cond := assert.cond
 		if !assert.orig {
-			cond = C.Z3_mk_not(cs.ctx, cond)
+			cond = C.Z3_mk_not(s.ctx, cond)
 		}
-		C.Z3_solver_assert(cs.ctx, solver, cond)
+		C.Z3_solver_assert(s.ctx, solver, cond)
 	}
 
-	negAssert := cs.assertions[negateAssertion]
+	negAssert := s.assertions[negateAssertion]
 	negCond := negAssert.cond
 	if negAssert.orig {
-		negCond = C.Z3_mk_not(cs.ctx, negCond)
+		negCond = C.Z3_mk_not(s.ctx, negCond)
 	}
-	C.Z3_solver_assert(cs.ctx, solver, negCond)
+	C.Z3_solver_assert(s.ctx, solver, negCond)
 
-	result := C.Z3_solver_check(cs.ctx, solver)
+	result := C.Z3_solver_check(s.ctx, solver)
 
-	fmt.Println(C.GoString(C.Z3_solver_to_string(cs.ctx, solver)))
+	fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 	switch result {
 	case C.Z3_L_FALSE:
 		return nil, UnsatError{}
 	case C.Z3_L_TRUE:
-		m := C.Z3_solver_get_model(cs.ctx, solver)
-		fmt.Println(C.GoString(C.Z3_model_to_string(cs.ctx, m)))
+		m := C.Z3_solver_get_model(s.ctx, solver)
+		fmt.Println(C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		if m != nil {
-			C.Z3_model_inc_ref(cs.ctx, m)
-			defer C.Z3_model_dec_ref(cs.ctx, m)
+			C.Z3_model_inc_ref(s.ctx, m)
+			defer C.Z3_model_dec_ref(s.ctx, m)
 		}
-		values, err := cs.getSymbolValues(m)
+		values, err := s.getSymbolValues(m)
 		if err != nil {
-			return nil, errors.Wrapf(err, "solve: failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(cs.ctx, m)))
+			return nil, errors.Wrapf(err, "solve: failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		}
 		return values, nil
 	default:
@@ -393,29 +408,29 @@ func (cs *Z3ConstraintSet) solve(negateAssertion int) ([]interface{}, error) {
 	}
 }
 
-func (cs *Z3ConstraintSet) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
-	values := make([]interface{}, len(cs.symbols))
-	for i, symbol := range cs.symbols {
+func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
+	values := make([]interface{}, len(s.symbols))
+	for i, symbol := range s.symbols {
 		values[i] = zero(symbol.ssa.Type())
 	}
 
-	n := int(C.Z3_model_get_num_consts(cs.ctx, m))
+	n := int(C.Z3_model_get_num_consts(s.ctx, m))
 	for i := 0; i < n; i++ {
-		constDecl := C.Z3_model_get_const_decl(cs.ctx, m, C.uint(i))
-		symbolID := C.Z3_get_decl_name(cs.ctx, constDecl)
-		if k := C.Z3_get_symbol_kind(cs.ctx, symbolID); k != C.Z3_INT_SYMBOL {
+		constDecl := C.Z3_model_get_const_decl(s.ctx, m, C.uint(i))
+		symbolID := C.Z3_get_decl_name(s.ctx, constDecl)
+		if k := C.Z3_get_symbol_kind(s.ctx, symbolID); k != C.Z3_INT_SYMBOL {
 			return nil, errors.New("Z3_symbol should be int value")
 		}
-		idx := int(C.Z3_get_symbol_int(cs.ctx, symbolID))
+		idx := int(C.Z3_get_symbol_int(s.ctx, symbolID))
 
-		a := C.Z3_mk_app(cs.ctx, constDecl, 0, nil)
+		a := C.Z3_mk_app(s.ctx, constDecl, 0, nil)
 		var ast C.Z3_ast
-		ok := C.Z3_model_eval(cs.ctx, m, a, C.bool(true), &ast)
+		ok := C.Z3_model_eval(s.ctx, m, a, C.bool(true), &ast)
 		if !C.bool(ok) {
 			return nil, fmt.Errorf("failed to get symbol[%d] from the model", i)
 		}
 
-		v, err := cs.astToValue(ast, cs.symbols[idx].ssa.Type())
+		v, err := s.astToValue(ast, s.symbols[idx].ssa.Type())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
 		}
@@ -426,15 +441,15 @@ func (cs *Z3ConstraintSet) getSymbolValues(m C.Z3_model) ([]interface{}, error) 
 	return values, nil
 }
 
-func (cs *Z3ConstraintSet) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) {
-	switch C.Z3_get_ast_kind(cs.ctx, ast) {
+func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) {
+	switch C.Z3_get_ast_kind(s.ctx, ast) {
 	case C.Z3_NUMERAL_AST:
 		basicTy, ok := ty.(*types.Basic)
 		if !ok {
 			return nil, fmt.Errorf("illegal type")
 		}
 		var u C.uint64_t
-		ok = bool(C.Z3_get_numeral_uint64(cs.ctx, ast, &u))
+		ok = bool(C.Z3_get_numeral_uint64(s.ctx, ast, &u))
 		if !ok {
 			return nil, fmt.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
 		}
@@ -465,22 +480,5 @@ func (cs *Z3ConstraintSet) astToValue(ast C.Z3_ast, ty types.Type) (interface{},
 	return nil, fmt.Errorf("cannot convert Z3_AST of type %s", ty)
 }
 
-func fromTrace(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3ConstraintSet {
-	cs := NewZ3ConstraintSet()
-
-	for _, symbol := range symbols {
-		cs.addSymbol(symbol)
-	}
-	for i, block := range trace {
-		for _, instr := range block.Instrs {
-			cs.addConstraint(instr)
-		}
-		lastInstr := block.Instrs[len(block.Instrs)-1]
-		if ifInstr, ok := lastInstr.(*ssa.If); ok {
-			orig := block.Succs[0] == trace[i+1]
-			cs.addAssertion(ifInstr, orig)
-		}
-	}
-
-	return cs
+func fromTrace(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 }

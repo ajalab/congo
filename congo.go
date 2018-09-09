@@ -54,10 +54,10 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			break
 		}
 
-		cs := fromTrace(prog.symbols, trace)
+		solver := NewZ3Solver(prog.symbols, trace)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
-		for j := len(cs.assertions) - 1; j >= 0; j-- {
-			assertion := cs.assertions[j]
+		for j := len(solver.assertions) - 1; j >= 0; j-- {
+			assertion := solver.assertions[j]
 			succs := assertion.instr.Block().Succs
 			b := succs[0]
 			if assertion.orig {
@@ -73,7 +73,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 		for _, j := range queue {
 			fmt.Println("negate assertion", j)
-			values, err = cs.solve(j)
+			values, err = solver.solve(j)
 			if err == nil {
 				break
 			} else if _, ok := err.(UnsatError); ok {
@@ -83,7 +83,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			}
 		}
 
-		cs.Close()
+		solver.Close()
 	}
 
 	return &ExecuteResult{Coverage: coverage}, nil
