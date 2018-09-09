@@ -2,8 +2,6 @@ package congo
 
 import (
 	"testing"
-
-	"github.com/ajalab/congo/interp"
 )
 
 func TestRun(t *testing.T) {
@@ -30,16 +28,12 @@ func TestRun(t *testing.T) {
 		}
 
 		n := len(prog.symbols)
-		symbolValues := make([]interp.SymbolicValue, n)
-		for i := 0; i < n; i++ {
-			ty := prog.symbols[i].Type()
-			symbolValues[i] = interp.SymbolicValue{
-				Value: zero(ty),
-				Type:  ty,
-			}
+		values := make([]interface{}, n)
+		for i, symbol := range prog.symbols {
+			values[i] = zero(symbol.Type())
 		}
 
-		if _, err = prog.Run(symbolValues); err != nil {
+		if _, err = prog.Run(values); err != nil {
 			t.Errorf("prog.Run: %v", err)
 		}
 	}
@@ -79,7 +73,7 @@ func TestExecute(t *testing.T) {
 			t.Fatalf("Program.Execute: %v\n", err)
 		}
 		if res.Coverage < tc.minCoverage {
-			t.Fatalf("coverage could not be accomplished: expected %f, actual %f\n", tc.minCoverage, res.Coverage)
+			t.Fatalf("%+v\ncoverage could not be accomplished: expected %f, actual %f\n", tc, tc.minCoverage, res.Coverage)
 		}
 	}
 }

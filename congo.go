@@ -23,22 +23,17 @@ type ExecuteResult struct {
 
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
-	symbolValues := make([]interp.SymbolicValue, n)
+	values := make([]interface{}, n)
 	covered := make(map[*ssa.BasicBlock]struct{})
 	targetFunc := prog.targetPackage.Func(prog.funcName)
 	var coverage float64
 
-	for i := 0; i < n; i++ {
-		ty := prog.symbols[i].Type()
-		symbolValues[i] = interp.SymbolicValue{
-			Value: zero(ty),
-			Type:  ty,
-		}
+	for i, symbol := range prog.symbols {
+		values[i] = zero(symbol.Type())
 	}
 
 	for i := uint(0); i < maxExec; i++ {
-		fmt.Println(symbolValues)
-		traces, err := prog.Run(symbolValues)
+		traces, err := prog.Run(values)
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +70,6 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		}
 		queue = append(queue, queueAfter...)
 
-		var values []interface{}
 		for _, j := range queue {
 			fmt.Println("negate assertion", j)
 			values, err = cs.solve(j)
@@ -87,9 +81,6 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				return nil, err
 			}
 		}
-		for j, v := range values {
-			symbolValues[j].Value = v
-		}
 
 		cs.Close()
 	}
@@ -97,7 +88,16 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	return &ExecuteResult{Coverage: coverage}, nil
 }
 
-func (prog *Program) Run(symbolValues []interp.SymbolicValue) ([][]*ssa.BasicBlock, error) {
+func (prog *Program) Run(values []interface{}) ([][]*ssa.BasicBlock, error) {
+	n := len(values)
+	symbolValues := make([]interp.SymbolicValue, n)
+	for i, symbol := range prog.symbols {
+		symbolValues[i] = interp.SymbolicValue{
+			Value: values[i],
+			Type:  symbol.Type(),
+		}
+	}
+
 	mode := interp.DisableRecover // interp.EnableTracing
 	trace, _ := interp.Interpret(
 		prog.runnerPackage,
