@@ -465,22 +465,20 @@ func (cs *Z3ConstraintSet) astToValue(ast C.Z3_ast, ty types.Type) (interface{},
 	return nil, fmt.Errorf("cannot convert Z3_AST of type %s", ty)
 }
 
-func fromTrace(symbols []ssa.Value, traces [][]*ssa.BasicBlock) *Z3ConstraintSet {
+func fromTrace(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3ConstraintSet {
 	cs := NewZ3ConstraintSet()
 
 	for _, symbol := range symbols {
 		cs.addSymbol(symbol)
 	}
-	for _, trace := range traces {
-		for i, block := range trace {
-			for _, instr := range block.Instrs {
-				cs.addConstraint(instr)
-			}
-			lastInstr := block.Instrs[len(block.Instrs)-1]
-			if ifInstr, ok := lastInstr.(*ssa.If); ok {
-				orig := block.Succs[0] == trace[i+1]
-				cs.addAssertion(ifInstr, orig)
-			}
+	for i, block := range trace {
+		for _, instr := range block.Instrs {
+			cs.addConstraint(instr)
+		}
+		lastInstr := block.Instrs[len(block.Instrs)-1]
+		if ifInstr, ok := lastInstr.(*ssa.If); ok {
+			orig := block.Succs[0] == trace[i+1]
+			cs.addAssertion(ifInstr, orig)
 		}
 	}
 

@@ -90,7 +90,7 @@ type interpreter struct {
 	goroutines         int32                // atomically updated
 
 	congoTraceTarget *ssa.Package
-	congoTrace       [][]*ssa.BasicBlock
+	congoTrace       []*ssa.BasicBlock
 	// TODO(ajalab) Use mutex to update congoTrace?
 	// congoMutex sync.Mutex
 }
@@ -576,7 +576,7 @@ func runFrame(fr *frame) {
 
 	for {
 		if tracing {
-			fr.i.congoTrace[0] = append(fr.i.congoTrace[0], fr.block)
+			fr.i.congoTrace = append(fr.i.congoTrace, fr.block)
 		}
 		if fr.i.mode&EnableTracing != 0 {
 			fmt.Fprintf(os.Stderr, ".%s:\n", fr.block)
@@ -676,7 +676,7 @@ func deleteBodies(pkg *ssa.Package, except ...string) {
 //
 // The SSA program must include the "runtime" package.
 //
-func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace [][]*ssa.BasicBlock, exitCode int) {
+func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace []*ssa.BasicBlock, exitCode int) {
 	if syswrite == nil {
 		fmt.Fprintln(os.Stderr, "Interpret: unsupported platform.")
 		return trace, 1
@@ -690,7 +690,7 @@ func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []Sy
 		goroutines: 1,
 
 		congoTraceTarget: targetpkg,
-		congoTrace:       make([][]*ssa.BasicBlock, 1),
+		congoTrace:       make([]*ssa.BasicBlock, 0),
 	}
 
 	runtimePkg := i.prog.ImportedPackage("runtime")

@@ -35,17 +35,16 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	}
 
 	for i := uint(0); i < maxExec; i++ {
-		traces, err := prog.Run(values)
+		trace, err := prog.Run(values)
 		if err != nil {
 			return nil, errors.Wrapf(err, "prog.Execute: failed to run with symbol values %v", values)
 		}
+		fmt.Println(trace)
 
-		for _, trace := range traces {
-			for _, b := range trace {
-				if b.Parent() == targetFunc {
-					covered[b] = struct{}{}
-					fmt.Printf("%s ", b)
-				}
+		for _, b := range trace {
+			if b.Parent() == targetFunc {
+				covered[b] = struct{}{}
+				fmt.Printf("%s ", b)
 			}
 		}
 		fmt.Println()
@@ -55,7 +54,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			break
 		}
 
-		cs := fromTrace(prog.symbols, traces)
+		cs := fromTrace(prog.symbols, trace)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
 		for j := len(cs.assertions) - 1; j >= 0; j-- {
 			assertion := cs.assertions[j]
@@ -90,7 +89,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	return &ExecuteResult{Coverage: coverage}, nil
 }
 
-func (prog *Program) Run(values []interface{}) ([][]*ssa.BasicBlock, error) {
+func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
 	n := len(values)
 	symbolValues := make([]interp.SymbolicValue, n)
 	for i, symbol := range prog.symbols {
