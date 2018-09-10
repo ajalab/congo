@@ -20,7 +20,8 @@ type Program struct {
 }
 
 type ExecuteResult struct {
-	Coverage float64
+	Coverage     float64
+	SymbolValues [][]interface{}
 }
 
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
@@ -29,6 +30,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	covered := make(map[*ssa.BasicBlock]struct{})
 	targetFunc := prog.targetPackage.Func(prog.funcName)
 	var coverage float64
+	var symbolValues [][]interface{}
 
 	for i, symbol := range prog.symbols {
 		values[i] = zero(symbol.Type())
@@ -39,17 +41,18 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		if err != nil {
 			return nil, errors.Wrapf(err, "prog.Execute: failed to run with symbol values %v", values)
 		}
-		fmt.Println(trace)
 
+		nCoveredBlks := len(covered)
 		for _, b := range trace {
 			if b.Parent() == targetFunc {
 				covered[b] = struct{}{}
-				fmt.Printf("%s ", b)
 			}
 		}
-		fmt.Println()
 		coverage = float64(len(covered)) / float64(len(targetFunc.Blocks))
-		fmt.Println("coverage", coverage)
+		log.Println("coverage", coverage)
+		if nCoveredBlks < len(covered) {
+			symbolValues = append(symbolValues, values)
+		}
 		if coverage >= minCoverage || i == maxExec-1 {
 			break
 		}
@@ -86,7 +89,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		solver.Close()
 	}
 
-	return &ExecuteResult{Coverage: coverage}, nil
+	return &ExecuteResult{Coverage: coverage, SymbolValues: symbolValues}, nil
 }
 
 func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
@@ -98,6 +101,8 @@ func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
 			Type:  symbol.Type(),
 		}
 	}
+
+	// interp.CapturedOutput = new(bytes.Buffer)
 
 	mode := interp.DisableRecover // interp.EnableTracing
 	trace, _ := interp.Interpret(
