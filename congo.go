@@ -2,8 +2,14 @@ package congo
 
 import (
 	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/token"
 	"go/types"
 	"log"
+	"os"
+	"strings"
 
 	"github.com/ajalab/congo/interp"
 	"golang.org/x/tools/go/ssa"
@@ -17,11 +23,6 @@ type Program struct {
 	runnerPackage     *ssa.Package
 	targetPackage     *ssa.Package
 	symbols           []ssa.Value
-}
-
-type ExecuteResult struct {
-	Coverage     float64
-	SymbolValues [][]interface{}
 }
 
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
@@ -88,8 +89,13 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 		solver.Close()
 	}
-
-	return &ExecuteResult{Coverage: coverage, SymbolValues: symbolValues}, nil
+	return &ExecuteResult{
+		Coverage:       coverage,
+		SymbolValues:   symbolValues,
+		targetPackage:  prog.targetPackage.Pkg,
+		targetFuncSig:  targetFunc.Signature,
+		targetFuncName: targetFunc.Name(),
+	}, nil
 }
 
 func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
@@ -114,4 +120,57 @@ func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
 		"",
 		[]string{})
 	return trace, nil
+}
+
+type ExecuteResult struct {
+	Coverage     float64
+	SymbolValues [][]interface{}
+
+	targetPackage  *types.Package
+	targetFuncSig  *types.Signature
+	targetFuncName string
+}
+
+func (r *ExecuteResult) GenerateTest() error {
+	targetPackageName := r.targetPackage.Name()
+	targetFuncName := r.targetFuncName
+	testFileName := "test.go"
+	testFuncName := "Test" + strings.Title(targetFuncName)
+	testTemp := fmt.Sprintf(`
+		package %s
+
+		import "testing"
+
+		func %s(_ *testing.T) {
+			congoTestCases := []struct{}{}
+			for _, tc := range congoTestCases {}
+		}
+	`, targetPackageName, testFuncName)
+
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, testFileName, testTemp, 0)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate AST for test module")
+	}
+
+	testFuncDecl := f.Decls[1].(*ast.FuncDecl)
+	testCasesExpr := testFuncDecl.Body.List[0].(*ast.AssignStmt).Rhs[0].(*ast.CompositeLit)
+	testCasesType := testCasesExpr.Type.(*ast.ArrayType).Elt.(*ast.StructType)
+	targetFuncParams := r.targetFuncSig.Params()
+	targetFuncParamsLen := targetFuncParams.Len()
+	for i := 0; i < targetFuncParamsLen; i++ {
+		param := targetFuncParams.At(i)
+		testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
+			Type:  type2ASTExpr(param.Type()),
+			Names: []*ast.Ident{ast.NewIdent(param.Name())},
+		})
+
+		tc := &ast.CompositeLit{}
+
+		testCasesExpr.Elts = append(testCasesExpr.Elts, tc)
+	}
+
+	format.Node(os.Stdout, token.NewFileSet(), f)
+	fmt.Printf("%v+", testCasesType)
+	return nil
 }

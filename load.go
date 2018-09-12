@@ -219,20 +219,8 @@ func getArgTypes(packageName string, funcName string) ([]types.Type, error) {
 
 func generateSymbolicArgs(argTypes []types.Type) []ast.Expr {
 	var args []ast.Expr
-
 	for i, ty := range argTypes {
-		var typeExpr ast.Expr
-		switch ty := ty.(type) {
-		case *types.Basic:
-			typeExpr = ast.NewIdent(ty.Name())
-		case *types.Named:
-			typeExpr = &ast.SelectorExpr{
-				X:   ast.NewIdent(ty.Obj().Pkg().Name()),
-				Sel: ast.NewIdent(ty.Obj().Id()),
-			}
-		}
-
-		arg := &ast.TypeAssertExpr{
+		args = append(args, &ast.TypeAssertExpr{
 			X: &ast.IndexExpr{
 				X: &ast.SelectorExpr{
 					X:   ast.NewIdent("symbol"),
@@ -243,9 +231,8 @@ func generateSymbolicArgs(argTypes []types.Type) []ast.Expr {
 					Value: strconv.Itoa(i),
 				},
 			},
-			Type: typeExpr,
-		}
-		args = append(args, arg)
+			Type: type2ASTExpr(ty),
+		})
 	}
 
 	return args
