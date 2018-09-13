@@ -153,20 +153,36 @@ func (r *ExecuteResult) GenerateTest() error {
 		return errors.Wrap(err, "failed to generate AST for test module")
 	}
 
+	targetFuncParams := r.targetFuncSig.Params()
+	targetFuncParamsLen := targetFuncParams.Len()
 	testFuncDecl := f.Decls[1].(*ast.FuncDecl)
 	testCasesExpr := testFuncDecl.Body.List[0].(*ast.AssignStmt).Rhs[0].(*ast.CompositeLit)
 	testCasesType := testCasesExpr.Type.(*ast.ArrayType).Elt.(*ast.StructType)
-	targetFuncParams := r.targetFuncSig.Params()
-	targetFuncParamsLen := targetFuncParams.Len()
+	testForStmtBody := testFuncDecl.Body.List[1].(*ast.RangeStmt).Body
+	testFuncCall := &ast.CallExpr{
+		Fun: ast.NewIdent(targetFuncName),
+	}
+	testForStmtBody.List = append(testForStmtBody.List, &ast.ExprStmt{
+		X: testFuncCall,
+	})
+
 	for i := 0; i < targetFuncParamsLen; i++ {
 		param := targetFuncParams.At(i)
 		testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
 			Type:  type2ASTExpr(param.Type()),
 			Names: []*ast.Ident{ast.NewIdent(param.Name())},
 		})
-
+		testFuncCall.Args = append(testFuncCall.Args, &ast.SelectorExpr{
+			X:   ast.NewIdent("tc"),
+			Sel: ast.NewIdent(param.Name()),
+		})
+	}
+	for _, values := range r.SymbolValues {
 		tc := &ast.CompositeLit{}
-
+		for i := 0; i < targetFuncParamsLen; i++ {
+			param := targetFuncParams.At(i)
+			tc.Elts = append(tc.Elts, value2ASTExpr(values[i], param.Type()))
+		}
 		testCasesExpr.Elts = append(testCasesExpr.Elts, tc)
 	}
 

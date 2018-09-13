@@ -50,7 +50,7 @@ func main() {
 	if result, err := prog.Execute(*maxExec, *minCoverage); err != nil {
 		fmt.Println("failed: ", err)
 	} else {
-		fmt.Println(result)
+		result.GenerateTest()
 	}
 
 }
