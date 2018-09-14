@@ -47,6 +47,7 @@
 package interp
 
 import (
+	"errors"
 	"fmt"
 	"go/token"
 	"go/types"
@@ -91,6 +92,7 @@ type interpreter struct {
 
 	congoTraceTarget *ssa.Package
 	congoTrace       []*ssa.BasicBlock
+	congoReturnValue interface{}
 	// TODO(ajalab) Use mutex to update congoTrace?
 	// congoMutex sync.Mutex
 }
@@ -560,6 +562,12 @@ func runFrame(fr *frame) {
 
 	defer func() {
 		if fr.block == nil {
+			if tracing {
+				// TODO(ajalab) set congoReturnValue only if the running frame is the target function
+				// need to add targetFunction as an argument for Interpret
+				fmt.Println("CONGO return", fr.result)
+				fr.i.congoReturnValue = fr.result
+			}
 			return // normal return
 		}
 		if fr.i.mode&DisableRecover != 0 {
@@ -676,10 +684,9 @@ func deleteBodies(pkg *ssa.Package, except ...string) {
 //
 // The SSA program must include the "runtime" package.
 //
-func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (trace []*ssa.BasicBlock, exitCode int) {
+func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (result *CongoInterpResult, err error) {
 	if syswrite == nil {
-		fmt.Fprintln(os.Stderr, "Interpret: unsupported platform.")
-		return trace, 1
+		panic("Interpret: unsupported platform.")
 	}
 
 	i := &interpreter{
@@ -743,9 +750,14 @@ func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []Sy
 	}
 
 	// Top-level error handler.
-	exitCode = 2
+	exitCode := 2
 	defer func() {
 		if exitCode != 2 || i.mode&DisableRecover != 0 {
+			result = &CongoInterpResult{
+				ExitCode:    exitCode,
+				Trace:       i.congoTrace,
+				ReturnValue: i.congoReturnValue,
+			}
 			return
 		}
 		switch p := recover().(type) {
@@ -753,13 +765,13 @@ func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []Sy
 			exitCode = int(p)
 			return
 		case targetPanic:
-			fmt.Fprintln(os.Stderr, "panic:", toString(p.v))
+			err = errors.New("panic: " + toString(p.v))
 		case runtime.Error:
-			fmt.Fprintln(os.Stderr, "panic:", p.Error())
+			err = errors.New("panic:" + p.Error())
 		case string:
-			fmt.Fprintln(os.Stderr, "panic:", p)
+			err = errors.New("panic:" + p)
 		default:
-			fmt.Fprintf(os.Stderr, "panic: unexpected type: %T: %v\n", p, p)
+			err = fmt.Errorf("panic: unexpected type: %T: %v", p, p)
 		}
 
 		// TODO(adonovan): dump panicking interpreter goroutine?
@@ -774,7 +786,6 @@ func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []Sy
 	if mainFn := mainpkg.Func("main"); mainFn != nil {
 		call(i, nil, token.NoPos, mainFn, nil)
 		exitCode = 0
-		trace = i.congoTrace
 	} else {
 		fmt.Fprintln(os.Stderr, "No main function.")
 		exitCode = 1

@@ -2,6 +2,8 @@ package interp
 
 import (
 	"go/types"
+
+	"golang.org/x/tools/go/ssa"
 )
 
 const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
@@ -28,4 +30,11 @@ func convertSymbolicValuesToInterpRepr(v interface{}, t types.Type) value {
 		return convertSymbolicValuesToInterpRepr(v, t.Underlying())
 	}
 	return nil
+}
+
+// CongoInterpResult is the type that contains interp.Interp result
+type CongoInterpResult struct {
+	ExitCode    int
+	Trace       []*ssa.BasicBlock
+	ReturnValue interface{}
 }

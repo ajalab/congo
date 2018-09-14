@@ -38,13 +38,13 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	}
 
 	for i := uint(0); i < maxExec; i++ {
-		trace, err := prog.Run(values)
+		result, err := prog.Run(values)
 		if err != nil {
 			return nil, errors.Wrapf(err, "prog.Execute: failed to run with symbol values %v", values)
 		}
 
 		nCoveredBlks := len(covered)
-		for _, b := range trace {
+		for _, b := range result.Trace {
 			if b.Parent() == targetFunc {
 				covered[b] = struct{}{}
 			}
@@ -58,7 +58,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			break
 		}
 
-		solver := NewZ3Solver(prog.symbols, trace)
+		solver := NewZ3Solver(prog.symbols, result.Trace)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
 		for j := len(solver.assertions) - 1; j >= 0; j-- {
 			assertion := solver.assertions[j]
@@ -98,7 +98,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	}, nil
 }
 
-func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
+func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error) {
 	n := len(values)
 	symbolValues := make([]interp.SymbolicValue, n)
 	for i, symbol := range prog.symbols {
@@ -111,7 +111,7 @@ func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
 	// interp.CapturedOutput = new(bytes.Buffer)
 
 	mode := interp.DisableRecover // interp.EnableTracing
-	trace, _ := interp.Interpret(
+	return interp.Interpret(
 		prog.runnerPackage,
 		prog.targetPackage,
 		symbolValues,
@@ -119,7 +119,6 @@ func (prog *Program) Run(values []interface{}) ([]*ssa.BasicBlock, error) {
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},
 		"",
 		[]string{})
-	return trace, nil
 }
 
 type ExecuteResult struct {
