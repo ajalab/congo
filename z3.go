@@ -387,7 +387,6 @@ func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
 
 	result := C.Z3_solver_check(s.ctx, solver)
 
-	fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 	switch result {
 	case C.Z3_L_FALSE:
 		return nil, UnsatError{}
@@ -404,7 +403,7 @@ func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
 		}
 		return values, nil
 	default:
-		return nil, fmt.Errorf("failed to solve: %v", result)
+		return nil, fmt.Errorf("failed to solve: %s", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 	}
 }
 
@@ -478,7 +477,4 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 
 	}
 	return nil, fmt.Errorf("cannot convert Z3_AST of type %s", ty)
-}
-
-func fromTrace(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 }
