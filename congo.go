@@ -9,6 +9,7 @@ import (
 	"go/types"
 	"log"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/ajalab/congo/interp"
@@ -30,6 +31,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	covered := make(map[*ssa.BasicBlock]struct{})
 	var coverage float64
 	var symbolValues [][]interface{}
+	var returnValues []interface{}
 
 	for i, symbol := range prog.symbols {
 		values[i] = zero(symbol.Type())
@@ -51,6 +53,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		log.Println("coverage", coverage)
 		if nCoveredBlks < len(covered) {
 			symbolValues = append(symbolValues, values)
+			returnValues = append(returnValues, result.ReturnValue)
 		}
 		if coverage >= minCoverage || i == maxExec-1 {
 			break
@@ -90,6 +93,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	return &ExecuteResult{
 		Coverage:       coverage,
 		SymbolValues:   symbolValues,
+		ReturnValues:   returnValues,
 		targetPackage:  prog.targetPackage.Pkg,
 		targetFuncSig:  prog.targetFunc.Signature,
 		targetFuncName: prog.targetFunc.Name(),
@@ -122,6 +126,7 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 type ExecuteResult struct {
 	Coverage     float64
 	SymbolValues [][]interface{}
+	ReturnValues []interface{}
 
 	targetPackage  *types.Package
 	targetFuncSig  *types.Signature
@@ -163,6 +168,8 @@ func (r *ExecuteResult) GenerateTest() error {
 		X: testFuncCall,
 	})
 
+	// Add fields to the struct type for test cases (testCasesType)
+	// Add arguments to the function call expression
 	for i := 0; i < targetFuncParamsLen; i++ {
 		param := targetFuncParams.At(i)
 		testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
@@ -174,11 +181,14 @@ func (r *ExecuteResult) GenerateTest() error {
 			Sel: ast.NewIdent(param.Name()),
 		})
 	}
-	for _, values := range r.SymbolValues {
+
+	// Add test cases
+	for i, values := range r.SymbolValues {
+		fmt.Printf("%[1]v: %[1]T\n", reflect.ValueOf(r.ReturnValues[i]).Index(0).Interface())
 		tc := &ast.CompositeLit{}
-		for i := 0; i < targetFuncParamsLen; i++ {
-			param := targetFuncParams.At(i)
-			tc.Elts = append(tc.Elts, value2ASTExpr(values[i], param.Type()))
+		for j := 0; j < targetFuncParamsLen; j++ {
+			param := targetFuncParams.At(j)
+			tc.Elts = append(tc.Elts, value2ASTExpr(values[j], param.Type()))
 		}
 		testCasesExpr.Elts = append(testCasesExpr.Elts, tc)
 	}
