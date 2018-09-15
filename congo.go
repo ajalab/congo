@@ -18,18 +18,16 @@ import (
 )
 
 type Program struct {
-	targetPackageName string
-	funcName          string
-	runnerPackage     *ssa.Package
-	targetPackage     *ssa.Package
-	symbols           []ssa.Value
+	runnerPackage *ssa.Package
+	targetPackage *ssa.Package
+	targetFunc    *ssa.Function
+	symbols       []ssa.Value
 }
 
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
 	values := make([]interface{}, n)
 	covered := make(map[*ssa.BasicBlock]struct{})
-	targetFunc := prog.targetPackage.Func(prog.funcName)
 	var coverage float64
 	var symbolValues [][]interface{}
 
@@ -45,11 +43,11 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 		nCoveredBlks := len(covered)
 		for _, b := range result.Trace {
-			if b.Parent() == targetFunc {
+			if b.Parent() == prog.targetFunc {
 				covered[b] = struct{}{}
 			}
 		}
-		coverage = float64(len(covered)) / float64(len(targetFunc.Blocks))
+		coverage = float64(len(covered)) / float64(len(prog.targetFunc.Blocks))
 		log.Println("coverage", coverage)
 		if nCoveredBlks < len(covered) {
 			symbolValues = append(symbolValues, values)
@@ -93,8 +91,8 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		Coverage:       coverage,
 		SymbolValues:   symbolValues,
 		targetPackage:  prog.targetPackage.Pkg,
-		targetFuncSig:  targetFunc.Signature,
-		targetFuncName: targetFunc.Name(),
+		targetFuncSig:  prog.targetFunc.Signature,
+		targetFuncName: prog.targetFunc.Name(),
 	}, nil
 }
 
@@ -113,7 +111,7 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 	mode := interp.DisableRecover // interp.EnableTracing
 	return interp.Interpret(
 		prog.runnerPackage,
-		prog.targetPackage,
+		prog.targetFunc,
 		symbolValues,
 		mode,
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},

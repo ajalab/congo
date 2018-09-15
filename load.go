@@ -118,11 +118,10 @@ func (c *Config) Open() (*Program, error) {
 	}
 
 	return &Program{
-		targetPackageName: c.PackageName,
-		funcName:          c.FuncName,
-		runnerPackage:     runnerPackage,
-		targetPackage:     targetPackage,
-		symbols:           symbols,
+		runnerPackage: runnerPackage,
+		targetPackage: targetPackage,
+		targetFunc:    targetPackage.Func(c.FuncName),
+		symbols:       symbols,
 	}, nil
 }
 

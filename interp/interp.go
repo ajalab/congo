@@ -90,7 +90,7 @@ type interpreter struct {
 	sizes              types.Sizes          // the effective type-sizing function
 	goroutines         int32                // atomically updated
 
-	congoTraceTarget *ssa.Package
+	congoTraceTarget *ssa.Function
 	congoTrace       []*ssa.BasicBlock
 	congoReturnValue interface{}
 	// TODO(ajalab) Use mutex to update congoTrace?
@@ -558,14 +558,11 @@ func callSSA(i *interpreter, caller *frame, callpos token.Pos, fn *ssa.Function,
 //
 func runFrame(fr *frame) {
 	pkg := fr.block.Parent().Package()
-	tracing := pkg == fr.i.congoTraceTarget || pkg.Pkg.Path() == packageRunnerPath
+	tracing := pkg == fr.i.congoTraceTarget.Pkg || pkg.Pkg.Path() == packageRunnerPath
 
 	defer func() {
 		if fr.block == nil {
-			if tracing {
-				// TODO(ajalab) set congoReturnValue only if the running frame is the target function
-				// need to add targetFunction as an argument for Interpret
-				fmt.Println("CONGO return", fr.result)
+			if fr.fn == fr.i.congoTraceTarget {
 				fr.i.congoReturnValue = fr.result
 			}
 			return // normal return
@@ -684,7 +681,7 @@ func deleteBodies(pkg *ssa.Package, except ...string) {
 //
 // The SSA program must include the "runtime" package.
 //
-func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (result *CongoInterpResult, err error) {
+func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (result *CongoInterpResult, err error) {
 	if syswrite == nil {
 		panic("Interpret: unsupported platform.")
 	}
@@ -696,7 +693,7 @@ func Interpret(mainpkg *ssa.Package, targetpkg *ssa.Package, symbolicValues []Sy
 		sizes:      sizes,
 		goroutines: 1,
 
-		congoTraceTarget: targetpkg,
+		congoTraceTarget: targetfunc,
 		congoTrace:       make([]*ssa.BasicBlock, 0),
 	}
 
