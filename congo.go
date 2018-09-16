@@ -9,7 +9,6 @@ import (
 	"go/types"
 	"log"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/ajalab/congo/interp"
@@ -164,9 +163,6 @@ func (r *ExecuteResult) GenerateTest() error {
 	testFuncCall := &ast.CallExpr{
 		Fun: ast.NewIdent(targetFuncName),
 	}
-	testForStmtBody.List = append(testForStmtBody.List, &ast.ExprStmt{
-		X: testFuncCall,
-	})
 
 	// Add fields to the struct type for test cases (testCasesType)
 	// Add arguments to the function call expression
@@ -183,8 +179,8 @@ func (r *ExecuteResult) GenerateTest() error {
 	}
 
 	// Add test cases
-	for i, values := range r.SymbolValues {
-		fmt.Printf("%[1]v: %[1]T\n", reflect.ValueOf(r.ReturnValues[i]).Index(0).Interface())
+	for _, values := range r.SymbolValues {
+		//fmt.Printf("%[1]v: %[1]T\n", reflect.ValueOf(r.ReturnValues[i]).Index(0).Interface())
 		tc := &ast.CompositeLit{}
 		for j := 0; j < targetFuncParamsLen; j++ {
 			param := targetFuncParams.At(j)
@@ -193,7 +189,39 @@ func (r *ExecuteResult) GenerateTest() error {
 		testCasesExpr.Elts = append(testCasesExpr.Elts, tc)
 	}
 
+	targetFuncRetLen := r.targetFuncSig.Results().Len()
+	switch targetFuncRetLen {
+	case 0:
+		testForStmtBody.List = append(testForStmtBody.List, &ast.ExprStmt{
+			X: testFuncCall,
+		})
+	case 1:
+		testForStmtBody.List = append(testForStmtBody.List, &ast.AssignStmt{
+			Lhs: []ast.Expr{ast.NewIdent("actual")},
+			Rhs: []ast.Expr{testFuncCall},
+			Tok: token.DEFINE,
+		})
+		retTy := r.targetFuncSig.Results().At(0).Type()
+		testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
+			Type:  type2ASTExpr(retTy),
+			Names: []*ast.Ident{ast.NewIdent("expected")},
+		})
+		for i, v := range r.ReturnValues {
+			tc := testCasesExpr.Elts[i].(*ast.CompositeLit)
+			tc.Elts = append(tc.Elts, value2ASTExpr(v, retTy))
+		}
+	default:
+		actualVars := make([]ast.Expr, targetFuncRetLen)
+		for i := 0; i < targetFuncRetLen; i++ {
+			actualVars[i] = ast.NewIdent(fmt.Sprintf("actual%d", i))
+		}
+		testForStmtBody.List = append(testForStmtBody.List, &ast.AssignStmt{
+			Lhs: actualVars,
+			Rhs: []ast.Expr{testFuncCall},
+			Tok: token.DEFINE,
+		})
+	}
+
 	format.Node(os.Stdout, token.NewFileSet(), f)
-	fmt.Printf("%v+", testCasesType)
 	return nil
 }

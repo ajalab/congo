@@ -739,7 +739,7 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 				t := symbolicValues[i].Type
 				values[i] = iface{
 					t: t,
-					v: convertSymbolicValuesToInterpRepr(symbolicValues[i].Value, t),
+					v: value2InterpValue(symbolicValues[i].Value, t),
 				}
 			}
 			setGlobal(i, pkg, "Symbols", values)

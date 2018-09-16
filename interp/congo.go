@@ -14,7 +14,7 @@ type SymbolicValue struct {
 	Type  types.Type
 }
 
-func convertSymbolicValuesToInterpRepr(v interface{}, t types.Type) value {
+func value2InterpValue(v interface{}, t types.Type) value {
 	switch t := t.(type) {
 	case *types.Basic:
 		return v
@@ -27,7 +27,7 @@ func convertSymbolicValuesToInterpRepr(v interface{}, t types.Type) value {
 
 		return values
 	case *types.Named:
-		return convertSymbolicValuesToInterpRepr(v, t.Underlying())
+		return value2InterpValue(v, t.Underlying())
 	}
 	return nil
 }
