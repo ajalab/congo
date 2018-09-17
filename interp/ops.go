@@ -925,8 +925,10 @@ func write(fd int, b []byte) (int, error) {
 	// TODO(adonovan): fix: on Windows, std{out,err} are not 1, 2.
 	if CapturedOutput != nil && (fd == 1 || fd == 2) {
 		capturedOutputMu.Lock()
-		CapturedOutput.Write(b) // ignore errors
+		n, err := CapturedOutput.Write(b) // ignore errors
 		capturedOutputMu.Unlock()
+		// changed for congo: suppress output
+		return n, err
 	}
 	return syswrite(fd, b)
 }

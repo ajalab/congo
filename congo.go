@@ -1,6 +1,7 @@
 package congo
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -76,7 +77,6 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		queue = append(queue, queueAfter...)
 
 		for _, j := range queue {
-			fmt.Println("negate assertion", j)
 			values, err = solver.solve(j)
 			if err == nil {
 				break
@@ -109,8 +109,7 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 		}
 	}
 
-	// interp.CapturedOutput = new(bytes.Buffer)
-
+	interp.CapturedOutput = new(bytes.Buffer)
 	mode := interp.DisableRecover // interp.EnableTracing
 	return interp.Interpret(
 		prog.runnerPackage,

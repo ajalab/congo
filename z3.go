@@ -392,7 +392,6 @@ func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
 		return nil, UnsatError{}
 	case C.Z3_L_TRUE:
 		m := C.Z3_solver_get_model(s.ctx, solver)
-		fmt.Println(C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		if m != nil {
 			C.Z3_model_inc_ref(s.ctx, m)
 			defer C.Z3_model_dec_ref(s.ctx, m)
