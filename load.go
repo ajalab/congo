@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Config is a type for loading the target program for Congo.
 type Config struct {
 	PackageName string
 	FuncName    string
@@ -29,6 +30,7 @@ func init() {
 const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
 const packageRunnerPath = "congomain"
 
+// Open opens the target program
 func (c *Config) Open() (*Program, error) {
 	runnerFile, err := generateRunnerFile(c.PackageName, c.FuncName)
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Program is a type that contains information of the target program and symbols.
 type Program struct {
 	runnerPackage *ssa.Package
 	targetPackage *ssa.Package
@@ -25,6 +26,8 @@ type Program struct {
 	symbols       []ssa.Value
 }
 
+// Execute executes concolic execution.
+// The iteration time is bounded by maxExec and stopped when minCoverage is accomplished.
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
 	values := make([]interface{}, n)
@@ -99,6 +102,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	}, nil
 }
 
+// Run runs the program by the interpreter provided by interp module.
 func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error) {
 	n := len(values)
 	symbolValues := make([]interp.SymbolicValue, n)
@@ -121,16 +125,21 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 		[]string{})
 }
 
+// ExecuteResult is a type that contains the result of Program.Execute.
+// TODO(ajalab):
+// ReturnValues has type []interp.value so it is meaningless to make this property public.
+// We use reflection to extract values from interp.value for now.
 type ExecuteResult struct {
-	Coverage     float64
-	SymbolValues [][]interface{}
-	ReturnValues []interface{}
+	Coverage     float64         // achieved coverage.
+	SymbolValues [][]interface{} // list of values for symbols.
+	ReturnValues []interface{}   // returned values corresponding to execution results. (invariant: len(SymbolValues) == len(ReturnValues))
 
 	targetPackage  *types.Package
 	targetFuncSig  *types.Signature
 	targetFuncName string
 }
 
+// GenerateTest generates test module for the program.
 func (r *ExecuteResult) GenerateTest() error {
 	targetPackageName := r.targetPackage.Name()
 	targetFuncName := r.targetFuncName
@@ -190,11 +199,15 @@ func (r *ExecuteResult) GenerateTest() error {
 
 	targetFuncRetLen := r.targetFuncSig.Results().Len()
 	switch targetFuncRetLen {
+	// function returns no values
 	case 0:
+		// for .. { targetFunc(..) }
 		testForStmtBody.List = append(testForStmtBody.List, &ast.ExprStmt{
 			X: testFuncCall,
 		})
+	// function returns single value
 	case 1:
+		// for .. { actual := targetFunc(..) }
 		testForStmtBody.List = append(testForStmtBody.List, &ast.AssignStmt{
 			Lhs: []ast.Expr{ast.NewIdent("actual")},
 			Rhs: []ast.Expr{testFuncCall},
@@ -209,7 +222,9 @@ func (r *ExecuteResult) GenerateTest() error {
 			tc := testCasesExpr.Elts[i].(*ast.CompositeLit)
 			tc.Elts = append(tc.Elts, value2ASTExpr(v, retTy))
 		}
+	// function returns multiple values
 	default:
+		// for .. { actual0, ..., actualN := targetFunc(..) }
 		actualVars := make([]ast.Expr, targetFuncRetLen)
 		for i := 0; i < targetFuncRetLen; i++ {
 			actualVars[i] = ast.NewIdent(fmt.Sprintf("actual%d", i))
