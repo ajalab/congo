@@ -24,16 +24,85 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 
 	results := sig.Results()
 	retValsLen := results.Len()
-	var assertRetVals []*types.Var
+	assertRetVals := make(map[*types.Var]struct{})
 	for i := 0; i < retValsLen; i++ {
 		v := results.At(i)
 		if _, ok := v.Type().(*types.Basic); ok {
-			assertRetVals = append(assertRetVals, v)
+			assertRetVals[v] = struct{}{}
 		}
 	}
-	fmt.Printf("assertletvals: %+v\n", assertRetVals)
 
 	args := generateSymbolicArgs(sig)
+	funcCallExpr := &ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   ast.NewIdent(packageIdent),
+			Sel: ast.NewIdent(funcName),
+		},
+		Args: args,
+	}
+	var funcCallStmt ast.Stmt
+	var runnerFuncBody *ast.BlockStmt
+	if len(assertRetVals) == 0 {
+		funcCallStmt = &ast.ExprStmt{X: funcCallExpr}
+		runnerFuncBody = &ast.BlockStmt{List: []ast.Stmt{funcCallStmt}}
+	} else {
+		lhs := make([]ast.Expr, retValsLen)
+		var assertCond ast.Expr
+		for i := 0; i < retValsLen; i++ {
+			v := results.At(i)
+			if _, ok := assertRetVals[v]; ok {
+				name := v.Name()
+				if name == "" {
+					name = fmt.Sprintf("actual%d", i)
+				}
+				lhs[i] = ast.NewIdent(name)
+
+				cond := &ast.BinaryExpr{
+					X: ast.NewIdent(name),
+					Y: &ast.TypeAssertExpr{
+						X: &ast.IndexExpr{
+							X: &ast.SelectorExpr{
+								X:   ast.NewIdent("symbol"),
+								Sel: ast.NewIdent("RetVals"),
+							},
+							Index: &ast.BasicLit{
+								Kind:  token.INT,
+								Value: strconv.Itoa(i),
+							},
+						},
+						Type: type2ASTExpr(v.Type()),
+					},
+					Op: token.EQL,
+				}
+
+				if assertCond == nil {
+					assertCond = cond
+				} else {
+					assertCond = &ast.BinaryExpr{
+						X:  assertCond,
+						Y:  cond,
+						Op: token.LAND,
+					}
+				}
+			}
+		}
+		funcCallStmt = &ast.AssignStmt{
+			Tok: token.DEFINE,
+			Lhs: lhs,
+			Rhs: []ast.Expr{funcCallExpr},
+		}
+		assertStmt := &ast.ExprStmt{
+			X: &ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   ast.NewIdent("symbol"),
+					Sel: ast.NewIdent("TestAssert"),
+				},
+				Args: []ast.Expr{assertCond},
+			},
+		}
+		runnerFuncBody = &ast.BlockStmt{List: []ast.Stmt{funcCallStmt, assertStmt}}
+	}
+
 	return &ast.File{
 		Name: ast.NewIdent(packageRunnerPath),
 		Decls: []ast.Decl{
@@ -62,19 +131,7 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 			&ast.FuncDecl{
 				Name: ast.NewIdent("main"),
 				Type: &ast.FuncType{},
-				Body: &ast.BlockStmt{
-					List: []ast.Stmt{
-						&ast.ExprStmt{
-							X: &ast.CallExpr{
-								Fun: &ast.SelectorExpr{
-									X:   ast.NewIdent(packageIdent),
-									Sel: ast.NewIdent(funcName),
-								},
-								Args: args,
-							},
-						},
-					},
-				},
+				Body: runnerFuncBody,
 			},
 		},
 	}, nil
