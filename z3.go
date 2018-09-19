@@ -8,6 +8,7 @@ import (
 )
 import (
 	"fmt"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"log"
@@ -350,15 +351,21 @@ func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 func (s *Z3Solver) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 	switch ty := v.Type().(type) {
 	case *types.Basic:
-		switch ty.Info() {
-		case types.IsInteger:
+		info := ty.Info()
+		switch {
+		case info&types.IsBoolean > 0:
+			if constant.BoolVal(v.Value) {
+				return C.Z3_mk_true(s.ctx)
+			}
+			return C.Z3_mk_false(s.ctx)
+		case info&types.IsInteger > 0:
 			size := sizeOfBasicKind(ty.Kind())
+			if info&types.IsUnsigned > 0 {
+				sort := C.Z3_mk_bv_sort(s.ctx, C.uint(size))
+				return C.Z3_mk_unsigned_int(s.ctx, C.uint(v.Uint64()), sort)
+			}
 			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(size))
 			return C.Z3_mk_int(s.ctx, C.int(v.Int64()), sort)
-		case types.IsUnsigned:
-			size := sizeOfBasicKind(ty.Kind())
-			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(size))
-			return C.Z3_mk_unsigned_int(s.ctx, C.uint(v.Uint64()), sort)
 		}
 	}
 	log.Fatalln("getZ3ConstAST: Unimplemented const value", v)
@@ -386,6 +393,7 @@ func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
 	C.Z3_solver_assert(s.ctx, solver, negCond)
 
 	result := C.Z3_solver_check(s.ctx, solver)
+	fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	switch result {
 	case C.Z3_L_FALSE:

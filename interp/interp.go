@@ -742,6 +742,16 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 					v: value2InterpValue(symbolicValues[i].Value, t),
 				}
 			}
+			rets := targetfunc.Signature.Results()
+			retVals := make([]value, rets.Len())
+			for i := 0; i < rets.Len(); i++ {
+				ty := rets.At(i).Type()
+				retVals[i] = iface{
+					t: ty,
+					v: zero(ty),
+				}
+			}
+			setGlobal(i, pkg, "RetVals", retVals)
 			setGlobal(i, pkg, "Symbols", values)
 		}
 	}
