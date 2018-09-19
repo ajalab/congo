@@ -103,8 +103,20 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 		runnerFuncBody = &ast.BlockStmt{List: []ast.Stmt{funcCallStmt, assertStmt}}
 	}
 
+	runnerFuncDecl := &ast.FuncDecl{
+		Name: ast.NewIdent("main"),
+		Type: &ast.FuncType{},
+		Body: runnerFuncBody,
+	}
+
+	scope := ast.NewScope(nil)
+	runnerFuncDeclObj := ast.NewObj(ast.Fun, "main")
+	runnerFuncDeclObj.Decl = runnerFuncDecl
+	scope.Insert(runnerFuncDeclObj)
+
 	return &ast.File{
-		Name: ast.NewIdent(packageRunnerPath),
+		Scope: scope,
+		Name:  ast.NewIdent(packageRunnerPath),
 		Decls: []ast.Decl{
 			&ast.GenDecl{
 				Tok: token.IMPORT,
@@ -128,11 +140,7 @@ func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
 					},
 				},
 			},
-			&ast.FuncDecl{
-				Name: ast.NewIdent("main"),
-				Type: &ast.FuncType{},
-				Body: runnerFuncBody,
-			},
+			runnerFuncDecl,
 		},
 	}, nil
 }

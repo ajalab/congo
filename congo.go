@@ -20,6 +20,7 @@ import (
 
 // Program is a type that contains information of the target program and symbols.
 type Program struct {
+	runnerFile    *ast.File
 	runnerPackage *ssa.Package
 	targetPackage *ssa.Package
 	targetFunc    *ssa.Function
@@ -35,6 +36,8 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	var coverage float64
 	var symbolValues [][]interface{}
 	var returnValues []interface{}
+
+	prog.runnerPackage.Func("main").WriteTo(os.Stdout)
 
 	for i, symbol := range prog.symbols {
 		values[i] = zero(symbol.Type())
@@ -96,6 +99,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		Coverage:       coverage,
 		SymbolValues:   symbolValues,
 		ReturnValues:   returnValues,
+		runnerFile:     prog.runnerFile,
 		targetPackage:  prog.targetPackage.Pkg,
 		targetFuncSig:  prog.targetFunc.Signature,
 		targetFuncName: prog.targetFunc.Name(),
@@ -134,6 +138,7 @@ type ExecuteResult struct {
 	SymbolValues [][]interface{} // list of values for symbols.
 	ReturnValues []interface{}   // returned values corresponding to execution results. (invariant: len(SymbolValues) == len(ReturnValues))
 
+	runnerFile     *ast.File
 	targetPackage  *types.Package
 	targetFuncSig  *types.Signature
 	targetFuncName string
@@ -141,7 +146,6 @@ type ExecuteResult struct {
 
 // GenerateTest generates test module for the program.
 func (r *ExecuteResult) GenerateTest() error {
-	targetPackageName := r.targetPackage.Name()
 	targetFuncName := r.targetFuncName
 	testFileName := "test.go"
 	testFuncName := "Test" + strings.Title(targetFuncName)
@@ -149,12 +153,13 @@ func (r *ExecuteResult) GenerateTest() error {
 		package %s
 
 		import "testing"
+		import "%s"
 
 		func %s(_ *testing.T) {
 			congoTestCases := []struct{}{}
 			for _, tc := range congoTestCases {}
 		}
-	`, targetPackageName, testFuncName)
+	`, r.targetPackage.Name()+"_test", r.targetPackage.Path(), testFuncName)
 
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, testFileName, testTemp, 0)
@@ -164,13 +169,12 @@ func (r *ExecuteResult) GenerateTest() error {
 
 	targetFuncParams := r.targetFuncSig.Params()
 	targetFuncParamsLen := targetFuncParams.Len()
-	testFuncDecl := f.Decls[1].(*ast.FuncDecl)
+	testFuncDecl := f.Scope.Lookup(testFuncName).Decl.(*ast.FuncDecl)
 	testCasesExpr := testFuncDecl.Body.List[0].(*ast.AssignStmt).Rhs[0].(*ast.CompositeLit)
 	testCasesType := testCasesExpr.Type.(*ast.ArrayType).Elt.(*ast.StructType)
-	testForStmtBody := testFuncDecl.Body.List[1].(*ast.RangeStmt).Body
-	testFuncCall := &ast.CallExpr{
-		Fun: ast.NewIdent(targetFuncName),
-	}
+	testRangeStmtBody := testFuncDecl.Body.List[1].(*ast.RangeStmt).Body
+	fmt.Println("Objects: ", r.runnerFile.Scope)
+	runnerFunc := r.runnerFile.Scope.Lookup("main").Decl.(*ast.FuncDecl)
 
 	// Add fields to the struct type for test cases (testCasesType)
 	// Add arguments to the function call expression
@@ -180,10 +184,12 @@ func (r *ExecuteResult) GenerateTest() error {
 			Type:  type2ASTExpr(param.Type()),
 			Names: []*ast.Ident{ast.NewIdent(param.Name())},
 		})
-		testFuncCall.Args = append(testFuncCall.Args, &ast.SelectorExpr{
-			X:   ast.NewIdent("tc"),
-			Sel: ast.NewIdent(param.Name()),
-		})
+		/*
+			testFuncCall.Args = append(testFuncCall.Args, &ast.SelectorExpr{
+				X:   ast.NewIdent("tc"),
+				Sel: ast.NewIdent(param.Name()),
+			})
+		*/
 	}
 
 	// Add test cases
@@ -197,44 +203,44 @@ func (r *ExecuteResult) GenerateTest() error {
 		testCasesExpr.Elts = append(testCasesExpr.Elts, tc)
 	}
 
-	targetFuncRetLen := r.targetFuncSig.Results().Len()
-	switch targetFuncRetLen {
-	// function returns no values
-	case 0:
-		// for .. { targetFunc(..) }
-		testForStmtBody.List = append(testForStmtBody.List, &ast.ExprStmt{
-			X: testFuncCall,
-		})
-	// function returns single value
-	case 1:
-		// for .. { actual := targetFunc(..) }
-		testForStmtBody.List = append(testForStmtBody.List, &ast.AssignStmt{
-			Lhs: []ast.Expr{ast.NewIdent("actual")},
-			Rhs: []ast.Expr{testFuncCall},
-			Tok: token.DEFINE,
-		})
-		retTy := r.targetFuncSig.Results().At(0).Type()
-		testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
-			Type:  type2ASTExpr(retTy),
-			Names: []*ast.Ident{ast.NewIdent("expected")},
-		})
-		for i, v := range r.ReturnValues {
-			tc := testCasesExpr.Elts[i].(*ast.CompositeLit)
-			tc.Elts = append(tc.Elts, value2ASTExpr(v, retTy))
-		}
-	// function returns multiple values
-	default:
-		// for .. { actual0, ..., actualN := targetFunc(..) }
-		actualVars := make([]ast.Expr, targetFuncRetLen)
-		for i := 0; i < targetFuncRetLen; i++ {
-			actualVars[i] = ast.NewIdent(fmt.Sprintf("actual%d", i))
-		}
-		testForStmtBody.List = append(testForStmtBody.List, &ast.AssignStmt{
-			Lhs: actualVars,
-			Rhs: []ast.Expr{testFuncCall},
-			Tok: token.DEFINE,
-		})
-	}
+	testRangeStmtBody.List = runnerFunc.Body.List
+	/*
+		targetFuncRetLen := r.targetFuncSig.Results().Len()
+			switch targetFuncRetLen {
+			// function returns no values
+			case 0:
+				testRangeStmtBody.List = runnerFunc.Body.List
+			// function returns single value
+			case 1:
+				// for .. { actual := targetFunc(..) }
+				testRangeStmtBody.List = append(testRangeStmtBody.List, &ast.AssignStmt{
+					Lhs: []ast.Expr{ast.NewIdent("actual")},
+					Rhs: []ast.Expr{testFuncCall},
+					Tok: token.DEFINE,
+				})
+				retTy := r.targetFuncSig.Results().At(0).Type()
+				testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
+					Type:  type2ASTExpr(retTy),
+					Names: []*ast.Ident{ast.NewIdent("expected")},
+				})
+				for i, v := range r.ReturnValues {
+					tc := testCasesExpr.Elts[i].(*ast.CompositeLit)
+					tc.Elts = append(tc.Elts, value2ASTExpr(v, retTy))
+				}
+			// function returns multiple values
+			default:
+				// for .. { actual0, ..., actualN := targetFunc(..) }
+				actualVars := make([]ast.Expr, targetFuncRetLen)
+				for i := 0; i < targetFuncRetLen; i++ {
+					actualVars[i] = ast.NewIdent(fmt.Sprintf("actual%d", i))
+				}
+				testRangeStmtBody.List = append(testRangeStmtBody.List, &ast.AssignStmt{
+					Lhs: actualVars,
+					Rhs: []ast.Expr{testFuncCall},
+					Tok: token.DEFINE,
+				})
+			}
+	*/
 
 	format.Node(os.Stdout, token.NewFileSet(), f)
 	return nil
