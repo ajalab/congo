@@ -265,14 +265,14 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 	var err error
 
 	symbolNames := make([]string, len(r.SymbolValues[0]))
-	for i, _ := range symbolNames {
+	for i := range symbolNames {
 		symbolNames[i] = fmt.Sprintf("symbol%d", i)
 	}
 	retValNames := make([]string, r.targetFuncSig.Results().Len())
 	if len(retValNames) == 1 {
 		retValNames[0] = "expected"
 	} else {
-		for i, _ := range retValNames {
+		for i := range retValNames {
 			retValNames[i] = fmt.Sprintf("expected%d", i)
 		}
 	}
