@@ -278,7 +278,9 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 	}
 
 	astutil.Apply(runnerFunc, func(c *astutil.Cursor) bool {
-		// Search for symbol.Symbols[i].(type)
+		// Search for type assertions expression e[i].(type) which satisfies the following requirements
+		// 1. e[i] has type symbol.SymbolType or symbolRetValType
+		// 2. i is a constant value
 		node := c.Node()
 		typeAssertExpr, ok := node.(*ast.TypeAssertExpr)
 		if !ok {
@@ -292,6 +294,7 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 		if !(ty == symbolType || ty == retValType) {
 			return true
 		}
+		// TODO(ajalab) Do we need to convert this into BasicLit?
 		index, ok := indexExpr.Index.(*ast.BasicLit)
 		if !ok {
 			err = fmt.Errorf("indexing symbols by variable is not supported: ")
