@@ -45,31 +45,32 @@ func (c *Config) Open() (*Program, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
+	fmt.Println("PackageInfo:", loaderProg.Package(packageRunnerPath).Files)
 
 	// Convert to SSA form
 	ssaProg := ssautil.CreateProgram(loaderProg, ssa.BuilderMode(0))
 	ssaProg.Build()
 
 	// Find SSA package of the runner
-	var runnerPackage, packageCongoSymbol, targetPackage *ssa.Package
+	var runnerPackage, congoSymbolPackage, targetPackage *ssa.Package
 	for _, info := range loaderProg.AllPackages {
 		switch info.Pkg.Path() {
 		case packageRunnerPath:
 			runnerPackage = ssaProg.Package(info.Pkg)
 		case packageCongoSymbolPath:
-			packageCongoSymbol = ssaProg.Package(info.Pkg)
+			congoSymbolPackage = ssaProg.Package(info.Pkg)
 		case c.PackageName:
 			targetPackage = ssaProg.Package(info.Pkg)
 		}
 	}
 
-	if runnerPackage == nil || packageCongoSymbol == nil || targetPackage == nil {
+	if runnerPackage == nil || congoSymbolPackage == nil || targetPackage == nil {
 		// unreachable
 		return nil, fmt.Errorf("runner package or %s does not exist", packageCongoSymbolPath)
 	}
 
 	// Find references to congo.Symbol
-	symbolType := packageCongoSymbol.Members["SymbolType"].Type()
+	symbolType := congoSymbolPackage.Members["SymbolType"].Type()
 	mainFunc := runnerPackage.Func("main")
 	symbolSubstTable := make(map[uint64]struct {
 		i int
@@ -118,10 +119,11 @@ func (c *Config) Open() (*Program, error) {
 	}
 
 	return &Program{
-		runnerFile:    runnerFile,
-		runnerPackage: runnerPackage,
-		targetPackage: targetPackage,
-		targetFunc:    targetPackage.Func(c.FuncName),
-		symbols:       symbols,
+		runnerPackageInfo:  loaderProg.Package(packageRunnerPath),
+		runnerPackage:      runnerPackage,
+		targetPackage:      targetPackage,
+		congoSymbolPackage: congoSymbolPackage,
+		targetFunc:         targetPackage.Func(c.FuncName),
+		symbols:            symbols,
 	}, nil
 }

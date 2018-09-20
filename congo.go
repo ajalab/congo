@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/format"
 	"go/parser"
 	"go/token"
 	"go/types"
 	"log"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/ajalab/congo/interp"
+	"golang.org/x/tools/go/ast/astutil"
+	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/pkg/errors"
@@ -20,11 +24,12 @@ import (
 
 // Program is a type that contains information of the target program and symbols.
 type Program struct {
-	runnerFile    *ast.File
-	runnerPackage *ssa.Package
-	targetPackage *ssa.Package
-	targetFunc    *ssa.Function
-	symbols       []ssa.Value
+	runnerPackageInfo  *loader.PackageInfo
+	runnerPackage      *ssa.Package
+	targetPackage      *ssa.Package
+	congoSymbolPackage *ssa.Package
+	targetFunc         *ssa.Function
+	symbols            []ssa.Value
 }
 
 // Execute executes concolic execution.
@@ -35,12 +40,13 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	covered := make(map[*ssa.BasicBlock]struct{})
 	var coverage float64
 	var symbolValues [][]interface{}
+	symbolTypes := make([]types.Type, len(prog.symbols))
 	var returnValues []interface{}
 
-	prog.runnerPackage.Func("main").WriteTo(os.Stdout)
-
 	for i, symbol := range prog.symbols {
-		values[i] = zero(symbol.Type())
+		ty := symbol.Type()
+		values[i] = zero(ty)
+		symbolTypes[i] = ty
 	}
 
 	for i := uint(0); i < maxExec; i++ {
@@ -96,13 +102,15 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		solver.Close()
 	}
 	return &ExecuteResult{
-		Coverage:       coverage,
-		SymbolValues:   symbolValues,
-		ReturnValues:   returnValues,
-		runnerFile:     prog.runnerFile,
-		targetPackage:  prog.targetPackage.Pkg,
-		targetFuncSig:  prog.targetFunc.Signature,
-		targetFuncName: prog.targetFunc.Name(),
+		Coverage:           coverage,
+		SymbolValues:       symbolValues,
+		SymbolTypes:        symbolTypes,
+		ReturnValues:       returnValues,
+		runnerPackageInfo:  prog.runnerPackageInfo,
+		targetPackage:      prog.targetPackage.Pkg,
+		congoSymbolPackage: prog.congoSymbolPackage.Pkg,
+		targetFuncSig:      prog.targetFunc.Signature,
+		targetFuncName:     prog.targetFunc.Name(),
 	}, nil
 }
 
@@ -136,12 +144,14 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 type ExecuteResult struct {
 	Coverage     float64         // achieved coverage.
 	SymbolValues [][]interface{} // list of values for symbols.
-	ReturnValues []interface{}   // returned values corresponding to execution results. (invariant: len(SymbolValues) == len(ReturnValues))
+	SymbolTypes  []types.Type
+	ReturnValues []interface{} // returned values corresponding to execution results. (invariant: len(SymbolValues) == len(ReturnValues))
 
-	runnerFile     *ast.File
-	targetPackage  *types.Package
-	targetFuncSig  *types.Signature
-	targetFuncName string
+	runnerPackageInfo  *loader.PackageInfo
+	targetPackage      *types.Package
+	congoSymbolPackage *types.Package
+	targetFuncSig      *types.Signature
+	targetFuncName     string
 }
 
 // GenerateTest generates test module for the program.
@@ -152,96 +162,147 @@ func (r *ExecuteResult) GenerateTest() error {
 	testTemp := fmt.Sprintf(`
 		package %s
 
-		import "testing"
-		import "%s"
-
 		func %s(_ *testing.T) {
 			congoTestCases := []struct{}{}
 			for _, tc := range congoTestCases {}
 		}
-	`, r.targetPackage.Name()+"_test", r.targetPackage.Path(), testFuncName)
+	`, r.targetPackage.Name()+"_test", testFuncName)
 
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, testFileName, testTemp, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to generate AST for test module")
 	}
+	astutil.AddImport(fset, f, "testing")
+	astutil.AddImport(fset, f, r.targetPackage.Path())
 
-	targetFuncParams := r.targetFuncSig.Params()
-	targetFuncParamsLen := targetFuncParams.Len()
+	// Rewrite symbols (symbol.Symbols and symbol.RetVals) in the runner function
+	runnerFunc := r.runnerPackageInfo.Files[0].Scope.Lookup("main").Decl.(*ast.FuncDecl)
+	symbolNames, retValNames, err := r.rewriteSymbols(runnerFunc)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate test code")
+	}
+
+	// Add symbol value fields to the struct type for test cases (testCasesType)
 	testFuncDecl := f.Scope.Lookup(testFuncName).Decl.(*ast.FuncDecl)
 	testCasesExpr := testFuncDecl.Body.List[0].(*ast.AssignStmt).Rhs[0].(*ast.CompositeLit)
 	testCasesType := testCasesExpr.Type.(*ast.ArrayType).Elt.(*ast.StructType)
-	testRangeStmtBody := testFuncDecl.Body.List[1].(*ast.RangeStmt).Body
-	fmt.Println("Objects: ", r.runnerFile.Scope)
-	runnerFunc := r.runnerFile.Scope.Lookup("main").Decl.(*ast.FuncDecl)
-
-	// Add fields to the struct type for test cases (testCasesType)
-	// Add arguments to the function call expression
-	for i := 0; i < targetFuncParamsLen; i++ {
-		param := targetFuncParams.At(i)
+	for i, name := range symbolNames {
 		testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
-			Type:  type2ASTExpr(param.Type()),
-			Names: []*ast.Ident{ast.NewIdent(param.Name())},
+			Type:  type2ASTExpr(r.SymbolTypes[i]),
+			Names: []*ast.Ident{ast.NewIdent(name)},
 		})
-		/*
-			testFuncCall.Args = append(testFuncCall.Args, &ast.SelectorExpr{
-				X:   ast.NewIdent("tc"),
-				Sel: ast.NewIdent(param.Name()),
-			})
-		*/
+	}
+
+	// Add oracle value fields to the struct type for test cases (testCasesType)
+	for i, name := range retValNames {
+		testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
+			Type:  type2ASTExpr(r.targetFuncSig.Results().At(i).Type()),
+			Names: []*ast.Ident{ast.NewIdent(name)},
+		})
 	}
 
 	// Add test cases
-	for _, values := range r.SymbolValues {
-		//fmt.Printf("%[1]v: %[1]T\n", reflect.ValueOf(r.ReturnValues[i]).Index(0).Interface())
+	for i, symbolValues := range r.SymbolValues {
+		// Add symbol values
 		tc := &ast.CompositeLit{}
-		for j := 0; j < targetFuncParamsLen; j++ {
-			param := targetFuncParams.At(j)
-			tc.Elts = append(tc.Elts, value2ASTExpr(values[j], param.Type()))
+		for j, value := range symbolValues {
+			ty := r.SymbolTypes[j]
+			tc.Elts = append(tc.Elts, value2ASTExpr(value, ty))
 		}
+
+		// Add oracle values
+		returnValues := r.ReturnValues[i]
+		returnValuesLen := r.targetFuncSig.Results().Len()
+		switch {
+		case returnValuesLen == 1:
+			value := reflect.ValueOf(returnValues).Interface()
+			ty := r.targetFuncSig.Results().At(0).Type()
+			tc.Elts = append(tc.Elts, value2ASTExpr(value, ty))
+		case returnValuesLen >= 2:
+			for j := 0; j < returnValuesLen; j++ {
+				value := reflect.ValueOf(returnValues).Index(j).Interface()
+				ty := r.targetFuncSig.Results().At(j).Type()
+				tc.Elts = append(tc.Elts, value2ASTExpr(value, ty))
+			}
+		}
+
 		testCasesExpr.Elts = append(testCasesExpr.Elts, tc)
 	}
-
+	testRangeStmtBody := testFuncDecl.Body.List[1].(*ast.RangeStmt).Body
 	testRangeStmtBody.List = runnerFunc.Body.List
-	/*
-		targetFuncRetLen := r.targetFuncSig.Results().Len()
-			switch targetFuncRetLen {
-			// function returns no values
-			case 0:
-				testRangeStmtBody.List = runnerFunc.Body.List
-			// function returns single value
-			case 1:
-				// for .. { actual := targetFunc(..) }
-				testRangeStmtBody.List = append(testRangeStmtBody.List, &ast.AssignStmt{
-					Lhs: []ast.Expr{ast.NewIdent("actual")},
-					Rhs: []ast.Expr{testFuncCall},
-					Tok: token.DEFINE,
-				})
-				retTy := r.targetFuncSig.Results().At(0).Type()
-				testCasesType.Fields.List = append(testCasesType.Fields.List, &ast.Field{
-					Type:  type2ASTExpr(retTy),
-					Names: []*ast.Ident{ast.NewIdent("expected")},
-				})
-				for i, v := range r.ReturnValues {
-					tc := testCasesExpr.Elts[i].(*ast.CompositeLit)
-					tc.Elts = append(tc.Elts, value2ASTExpr(v, retTy))
-				}
-			// function returns multiple values
-			default:
-				// for .. { actual0, ..., actualN := targetFunc(..) }
-				actualVars := make([]ast.Expr, targetFuncRetLen)
-				for i := 0; i < targetFuncRetLen; i++ {
-					actualVars[i] = ast.NewIdent(fmt.Sprintf("actual%d", i))
-				}
-				testRangeStmtBody.List = append(testRangeStmtBody.List, &ast.AssignStmt{
-					Lhs: actualVars,
-					Rhs: []ast.Expr{testFuncCall},
-					Tok: token.DEFINE,
-				})
-			}
-	*/
 
 	format.Node(os.Stdout, token.NewFileSet(), f)
 	return nil
+}
+
+type SymbolNotIndexedByConst struct {
+	ast ast.Node
+}
+
+func (e SymbolNotIndexedByConst) Error() string {
+	return ""
+}
+
+func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []string, error) {
+	symbolType := r.congoSymbolPackage.Scope().Lookup("SymbolType").Type()
+	retValType := r.congoSymbolPackage.Scope().Lookup("RetValType").Type()
+	var err error
+
+	symbolNames := make([]string, len(r.SymbolValues[0]))
+	for i, _ := range symbolNames {
+		symbolNames[i] = fmt.Sprintf("symbol%d", i)
+	}
+	retValNames := make([]string, r.targetFuncSig.Results().Len())
+	if len(retValNames) == 1 {
+		retValNames[0] = "expected"
+	} else {
+		for i, _ := range retValNames {
+			retValNames[i] = fmt.Sprintf("expected%d", i)
+		}
+	}
+
+	astutil.Apply(runnerFunc, func(c *astutil.Cursor) bool {
+		// Search for symbol.Symbols[i].(type)
+		node := c.Node()
+		typeAssertExpr, ok := node.(*ast.TypeAssertExpr)
+		if !ok {
+			return true
+		}
+		indexExpr, ok := typeAssertExpr.X.(*ast.IndexExpr)
+		if !ok {
+			return true
+		}
+		ty := r.runnerPackageInfo.TypeOf(indexExpr)
+		if !(ty == symbolType || ty == retValType) {
+			return true
+		}
+		index, ok := indexExpr.Index.(*ast.BasicLit)
+		if !ok {
+			err = fmt.Errorf("indexing symbols by variable is not supported: ")
+			return false
+		}
+		i, _ := constant.Int64Val(r.runnerPackageInfo.Types[index].Value)
+		var name string
+		switch ty {
+		case symbolType:
+			if callExpr, ok := c.Parent().(*ast.CallExpr); ok {
+				sig := r.runnerPackageInfo.TypeOf(callExpr.Fun).(*types.Signature)
+				symbolNames[i] = sig.Params().At(c.Index()).Name()
+			}
+			name = symbolNames[i]
+		case retValType:
+			r := r.targetFuncSig.Results().At(int(i))
+			if n := r.Name(); n != "" {
+				retValNames[i] = n
+			}
+			name = retValNames[i]
+		}
+		c.Replace(&ast.SelectorExpr{
+			X:   ast.NewIdent("tc"),
+			Sel: ast.NewIdent(name),
+		})
+		return false
+	}, nil)
+	return symbolNames, retValNames, err
 }
