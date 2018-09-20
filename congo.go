@@ -156,32 +156,47 @@ type ExecuteResult struct {
 
 // GenerateTest generates test module for the program.
 func (r *ExecuteResult) GenerateTest() error {
-	targetFuncName := r.targetFuncName
-	testFileName := "test.go"
-	testFuncName := "Test" + strings.Title(targetFuncName)
+	runnerFuncName := "main" // TODO(ajalab): parametrize this variable for arbitrary defined runner functions
+
+	// Rewrite symbols (symbol.Symbols and symbol.RetVals) in the runner function
+	runnerFunc := r.runnerPackageInfo.Files[0].Scope.Lookup(runnerFuncName).Decl.(*ast.FuncDecl)
+	symbolNames, retValNames, err := r.rewriteSymbols(runnerFunc)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate test code")
+	}
+
+	// Determine the name for the variable of type *testing.T
+	testingT := "testingT"
+	runnerFuncType := r.runnerPackageInfo.Pkg.Scope().Lookup(runnerFuncName).(*types.Func)
+	if runnerFuncType.Scope().Lookup("t") == nil {
+		testingT = "t"
+	}
+
+	// Rewrite congo assertions
+	err = r.rewriteAssertions(testingT, runnerFunc)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate test code")
+	}
+
+	// Now we prepare the AST file for test to generate
+	testFuncName := "Test" + strings.Title(r.targetFuncName)
 	testTemp := fmt.Sprintf(`
 		package %s
 
-		func %s(_ *testing.T) {
+		func %s(%s *testing.T) {
 			congoTestCases := []struct{}{}
 			for _, tc := range congoTestCases {}
 		}
-	`, r.targetPackage.Name()+"_test", testFuncName)
+	`, r.targetPackage.Name()+"_test", testFuncName, testingT)
 
 	fset := token.NewFileSet()
+	testFileName := "test.go"
 	f, err := parser.ParseFile(fset, testFileName, testTemp, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed to generate AST for test module")
 	}
 	astutil.AddImport(fset, f, "testing")
 	astutil.AddImport(fset, f, r.targetPackage.Path())
-
-	// Rewrite symbols (symbol.Symbols and symbol.RetVals) in the runner function
-	runnerFunc := r.runnerPackageInfo.Files[0].Scope.Lookup("main").Decl.(*ast.FuncDecl)
-	symbolNames, retValNames, err := r.rewriteSymbols(runnerFunc)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate test code")
-	}
 
 	// Add symbol value fields to the struct type for test cases (testCasesType)
 	testFuncDecl := f.Scope.Lookup(testFuncName).Decl.(*ast.FuncDecl)
@@ -305,4 +320,69 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 		return false
 	}, nil)
 	return symbolNames, retValNames, err
+}
+
+func (r *ExecuteResult) rewriteAssertions(testingT string, runnerFunc *ast.FuncDecl) error {
+	testAssertType := r.congoSymbolPackage.Scope().Lookup("TestAssert").Type()
+	astutil.Apply(runnerFunc, func(c *astutil.Cursor) bool {
+		node := c.Node()
+		exprStmt, ok := node.(*ast.ExprStmt)
+		if !ok {
+			return true
+		}
+		callExpr, ok := exprStmt.X.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		funcType := r.runnerPackageInfo.TypeOf(callExpr.Fun)
+		if funcType == testAssertType {
+			cond := callExpr.Args[0]
+			assertion := &ast.IfStmt{
+				Cond: negateCond(cond),
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.ExprStmt{
+							X: &ast.CallExpr{
+								Fun: &ast.SelectorExpr{
+									X:   ast.NewIdent(testingT),
+									Sel: ast.NewIdent("Error"),
+								},
+								Args: []ast.Expr{&ast.BasicLit{
+									Kind:  token.STRING,
+									Value: "\"assertion failed\"",
+								}},
+							},
+						},
+					},
+				},
+			}
+			c.Replace(assertion)
+			return false
+		}
+		return true
+	}, nil)
+	return nil
+}
+
+func negateCond(cond ast.Expr) ast.Expr {
+	if binCond, ok := cond.(*ast.BinaryExpr); ok {
+		newOp := token.ILLEGAL
+		switch binCond.Op {
+		case token.EQL:
+			newOp = token.NEQ
+		case token.NEQ:
+			newOp = token.EQL
+		}
+		if newOp != token.ILLEGAL {
+			return &ast.BinaryExpr{
+				X:  binCond.X,
+				Y:  binCond.Y,
+				Op: newOp,
+			}
+		}
+	}
+	return &ast.UnaryExpr{
+		Op: token.NOT,
+		X:  cond,
+	}
 }
