@@ -37,6 +37,7 @@ func (c *Config) Open() (*Program, error) {
 	var loaderConf loader.Config
 	loaderConf.CreateFromFiles(packageRunnerPath, runnerFile)
 	loaderConf.Import(packageCongoSymbolPath)
+	loaderConf.Import("runtime")
 	loaderProg, err := loaderConf.Load()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
