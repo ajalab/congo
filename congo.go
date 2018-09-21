@@ -294,13 +294,12 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 		if !(ty == symbolType || ty == retValType) {
 			return true
 		}
-		// TODO(ajalab) Do we need to convert this into BasicLit?
-		index, ok := indexExpr.Index.(*ast.BasicLit)
-		if !ok {
-			err = fmt.Errorf("indexing symbols by variable is not supported: ")
+		indexTV, ok := r.runnerPackageInfo.Types[indexExpr.Index]
+		if !(ok && indexTV.Value.Kind() == constant.Int) {
+			err = errors.New("indexing symbols should be constant")
 			return false
 		}
-		i, _ := constant.Int64Val(r.runnerPackageInfo.Types[index].Value)
+		i, _ := constant.Int64Val(indexTV.Value)
 		var name string
 		switch ty {
 		case symbolType:
