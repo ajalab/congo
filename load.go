@@ -3,10 +3,8 @@ package congo
 import (
 	"fmt"
 	"go/constant"
-	"go/format"
 	"go/token"
 	"log"
-	"os"
 
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
@@ -35,8 +33,6 @@ func (c *Config) Open() (*Program, error) {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}
 
-	format.Node(os.Stderr, token.NewFileSet(), runnerFile)
-
 	// Load and type-check
 	var loaderConf loader.Config
 	loaderConf.CreateFromFiles(packageRunnerPath, runnerFile)
@@ -45,7 +41,6 @@ func (c *Config) Open() (*Program, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
-	fmt.Println("PackageInfo:", loaderProg.Package(packageRunnerPath).Files)
 
 	// Convert to SSA form
 	ssaProg := ssautil.CreateProgram(loaderProg, ssa.BuilderMode(0))

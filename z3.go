@@ -393,7 +393,6 @@ func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
 	C.Z3_solver_assert(s.ctx, solver, negCond)
 
 	result := C.Z3_solver_check(s.ctx, solver)
-	fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	switch result {
 	case C.Z3_L_FALSE:
