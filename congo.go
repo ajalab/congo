@@ -37,12 +37,13 @@ type Program struct {
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
 	values := make([]interface{}, n)
-	covered := make(map[*ssa.BasicBlock]struct{})
-	var coverage float64
+	symbolTypes := make([]types.Type, n)
 	var symbolValues [][]interface{}
-	symbolTypes := make([]types.Type, len(prog.symbols))
 	var returnValues []interface{}
+	covered := make(map[*ssa.BasicBlock]struct{})
+	coverage := 0.0
 
+	// We assign zero value for each symbol at first.
 	for i, symbol := range prog.symbols {
 		ty := symbol.Type()
 		values[i] = zero(ty)
@@ -50,23 +51,33 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	}
 
 	for i := uint(0); i < maxExec; i++ {
+		// Interpret the program with the current symbol values.
+		// TODO(ajalab) handle panic occurred in the target
 		result, err := prog.Run(values)
 		if err != nil {
 			return nil, errors.Wrapf(err, "prog.Execute: failed to run with symbol values %v", values)
 		}
 
-		nCoveredBlks := len(covered)
+		// Update the covered blocks.
+		nNewCoveredBlks := 0
 		for _, b := range result.Trace {
 			if b.Parent() == prog.targetFunc {
-				covered[b] = struct{}{}
+				if _, ok := covered[b]; !ok {
+					covered[b] = struct{}{}
+					nNewCoveredBlks++
+				}
 			}
 		}
-		coverage = float64(len(covered)) / float64(len(prog.targetFunc.Blocks))
-		log.Println("coverage", coverage)
-		if nCoveredBlks < len(covered) {
+		// Record the symbol values if new blocks are covered.
+		if nNewCoveredBlks > 0 {
 			symbolValues = append(symbolValues, values)
 			returnValues = append(returnValues, result.ReturnValue)
 		}
+
+		// Compute the coverage and exit if it exceeds the minCoverage.
+		// Also exit when the execution count minus one is equal to maxExec to avoid unnecessary constraint solver call.
+		coverage = float64(len(covered)) / float64(len(prog.targetFunc.Blocks))
+		log.Println("coverage", coverage)
 		if coverage >= minCoverage || i == maxExec-1 {
 			break
 		}
