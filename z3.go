@@ -17,6 +17,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// Z3Solver is a type that holds the Z3 context, assertions, and symbols.
 type Z3Solver struct {
 	asts map[ssa.Value]C.Z3_ast
 	ctx  C.Z3_context
@@ -39,12 +40,14 @@ type symbol struct {
 	ssa ssa.Value
 }
 
+// UnsatError is an error describing that Z3 constraints were unsatisfied.
 type UnsatError struct{}
 
 func (ue UnsatError) Error() string {
 	return "unsat"
 }
 
+// NewZ3Solver returns a new Z3Solver.
 func NewZ3Solver(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
@@ -72,6 +75,7 @@ func NewZ3Solver(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 	return s
 }
 
+// Close deletes the Z3 context.
 func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
@@ -170,9 +174,8 @@ func z3MakeDiv(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	case info&types.IsInteger > 0:
 		if info&types.IsUnsigned > 0 {
 			return C.Z3_mk_bvudiv(ctx, x, y)
-		} else {
-			return C.Z3_mk_bvsdiv(ctx, x, y)
 		}
+		return C.Z3_mk_bvsdiv(ctx, x, y)
 	default:
 		log.Fatalf("z3MakeDiv: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
@@ -190,9 +193,9 @@ func z3MakeLt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	case info&types.IsInteger > 0:
 		if info&types.IsUnsigned > 0 {
 			return C.Z3_mk_bvult(ctx, x, y)
-		} else {
-			return C.Z3_mk_bvslt(ctx, x, y)
 		}
+		return C.Z3_mk_bvslt(ctx, x, y)
+
 	default:
 		log.Fatalf("z3MakeLt: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
@@ -210,9 +213,9 @@ func z3MakeLe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	case info&types.IsInteger > 0:
 		if info&types.IsUnsigned > 0 {
 			return C.Z3_mk_bvule(ctx, x, y)
-		} else {
-			return C.Z3_mk_bvsle(ctx, x, y)
 		}
+		return C.Z3_mk_bvsle(ctx, x, y)
+
 	default:
 		log.Fatalf("z3MakeLe: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
@@ -230,9 +233,9 @@ func z3MakeGt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	case info&types.IsInteger > 0:
 		if info&types.IsUnsigned > 0 {
 			return C.Z3_mk_bvugt(ctx, x, y)
-		} else {
-			return C.Z3_mk_bvsgt(ctx, x, y)
 		}
+		return C.Z3_mk_bvsgt(ctx, x, y)
+
 	default:
 		log.Fatalf("z3MakeGt: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
@@ -250,9 +253,9 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	case info&types.IsInteger > 0:
 		if info&types.IsUnsigned > 0 {
 			return C.Z3_mk_bvuge(ctx, x, y)
-		} else {
-			return C.Z3_mk_bvsge(ctx, x, y)
 		}
+		return C.Z3_mk_bvsge(ctx, x, y)
+
 	default:
 		log.Fatalf("z3MakeGe: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")

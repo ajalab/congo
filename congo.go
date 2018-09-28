@@ -259,14 +259,6 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 	return f, nil
 }
 
-type SymbolNotIndexedByConst struct {
-	ast ast.Node
-}
-
-func (e SymbolNotIndexedByConst) Error() string {
-	return ""
-}
-
 func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []string, error) {
 	symbolType := r.congoSymbolPackage.Scope().Lookup("SymbolType").Type()
 	retValType := r.congoSymbolPackage.Scope().Lookup("RetValType").Type()
