@@ -87,6 +87,9 @@ func (s *Z3Solver) addSymbol(ssaSymbol ssa.Value) error {
 		case info&types.IsInteger > 0:
 			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
 			v = C.Z3_mk_const(s.ctx, symbolID, sort)
+		case info&types.IsString > 0:
+			sort := C.Z3_mk_string_sort(s.ctx)
+			v = C.Z3_mk_const(s.ctx, symbolID, sort)
 		default:
 			return fmt.Errorf("unsupported basic type: %v", ty)
 		}
@@ -115,6 +118,9 @@ func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	switch {
 	case info&types.IsInteger > 0:
 		return C.Z3_mk_bvadd(ctx, x, y)
+	case info&types.IsString > 0:
+		args := []C.Z3_ast{x, y}
+		return C.Z3_mk_seq_concat(ctx, 2, &args[0])
 	default:
 		log.Fatalf("z3MakeAdd: not implemented: %T\n", ty)
 		panic("unimplemented")
@@ -366,6 +372,8 @@ func (s *Z3Solver) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 			}
 			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(size))
 			return C.Z3_mk_int(s.ctx, C.int(v.Int64()), sort)
+		case info&types.IsString > 0:
+			return C.Z3_mk_string(s.ctx, C.CString(constant.StringVal(v.Value)))
 		}
 	}
 	log.Fatalln("getZ3ConstAST: Unimplemented const value", v)
@@ -447,7 +455,8 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 }
 
 func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) {
-	switch C.Z3_get_ast_kind(s.ctx, ast) {
+	kind := C.Z3_get_ast_kind(s.ctx, ast)
+	switch kind {
 	case C.Z3_NUMERAL_AST:
 		basicTy, ok := ty.(*types.Basic)
 		if !ok {
@@ -480,7 +489,17 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 		case types.Uint64:
 			return uint64(u), nil
 		}
+	case C.Z3_APP_AST:
+		basicTy, ok := ty.(*types.Basic)
+		if !ok {
+			return nil, fmt.Errorf("illegal type")
+		}
+		switch basicTy.Kind() {
+		case types.String:
+			return C.GoString(C.Z3_get_string(s.ctx, ast)), nil
+		}
 
+		return nil, fmt.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
 	}
-	return nil, fmt.Errorf("cannot convert Z3_AST of type %s", ty)
+	return nil, fmt.Errorf("cannot convert Z3_AST (kind: %d) of type %s", kind, ty)
 }

@@ -31,6 +31,11 @@ func value2ASTExpr(v interface{}, ty types.Type) ast.Expr {
 				Kind:  token.INT,
 				Value: fmt.Sprintf("%v", v),
 			}
+		case info&types.IsString > 0:
+			return &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: fmt.Sprintf("\"%s\"", v.(string)),
+			}
 		default:
 			panic("unimplemented")
 		}
