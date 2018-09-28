@@ -2,10 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"runtime/pprof"
+
+	"go/format"
+	"go/token"
 
 	"github.com/ajalab/congo"
 )
@@ -14,6 +16,7 @@ var (
 	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to file")
 	minCoverage = flag.Float64("coverage", 1.0, "minimum coverage")
 	maxExec     = flag.Uint("maxexec", 10, "maximum execution time")
+	o           = flag.String("o", "", "destination path for generated test code")
 )
 
 func main() {
@@ -47,10 +50,22 @@ func main() {
 		log.Fatalf("Config.Open: %v", err)
 	}
 
-	if result, err := prog.Execute(*maxExec, *minCoverage); err != nil {
-		fmt.Println("failed: ", err)
-	} else {
-		result.GenerateTest()
+	result, err := prog.Execute(*maxExec, *minCoverage)
+	if err != nil {
+		log.Fatalf("failed to perform concolic execution: %v", err)
+	}
+	f, err := result.GenerateTest()
+	if err != nil {
+		log.Fatalf("failed to generate test: %v", err)
 	}
 
+	dest := os.Stdout
+	if *o != "" {
+		log.Println("save to", *o)
+		dest, err = os.Create(*o)
+		if err != nil {
+			log.Fatalf("faled to open the destination file: %v", err)
+		}
+	}
+	format.Node(dest, token.NewFileSet(), f)
 }

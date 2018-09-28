@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
-	"go/format"
 	"go/parser"
 	"go/token"
 	"go/types"
 	"log"
-	"os"
 	"reflect"
 	"strings"
 
@@ -166,14 +164,14 @@ type ExecuteResult struct {
 }
 
 // GenerateTest generates test module for the program.
-func (r *ExecuteResult) GenerateTest() error {
+func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 	runnerFuncName := "main" // TODO(ajalab): parametrize this variable for arbitrary defined runner functions
 
 	// Rewrite symbols (symbol.Symbols and symbol.RetVals) in the runner function
 	runnerFunc := r.runnerPackageInfo.Files[0].Scope.Lookup(runnerFuncName).Decl.(*ast.FuncDecl)
 	symbolNames, retValNames, err := r.rewriteSymbols(runnerFunc)
 	if err != nil {
-		return errors.Wrap(err, "failed to generate test code")
+		return nil, errors.Wrap(err, "failed to generate test code")
 	}
 
 	// Determine the name for the variable of type *testing.T
@@ -186,7 +184,7 @@ func (r *ExecuteResult) GenerateTest() error {
 	// Rewrite congo assertions
 	err = r.rewriteAssertions(testingT, runnerFunc)
 	if err != nil {
-		return errors.Wrap(err, "failed to generate test code")
+		return nil, errors.Wrap(err, "failed to generate test code")
 	}
 
 	// Now we prepare the AST file for test to generate
@@ -204,7 +202,7 @@ func (r *ExecuteResult) GenerateTest() error {
 	testFileName := "test.go"
 	f, err := parser.ParseFile(fset, testFileName, testTemp, 0)
 	if err != nil {
-		return errors.Wrap(err, "failed to generate AST for test module")
+		return nil, errors.Wrap(err, "failed to generate AST for test module")
 	}
 	astutil.AddImport(fset, f, "testing")
 	astutil.AddImport(fset, f, r.targetPackage.Path())
@@ -258,8 +256,7 @@ func (r *ExecuteResult) GenerateTest() error {
 	testRangeStmtBody := testFuncDecl.Body.List[1].(*ast.RangeStmt).Body
 	testRangeStmtBody.List = runnerFunc.Body.List
 
-	format.Node(os.Stdout, token.NewFileSet(), f)
-	return nil
+	return f, nil
 }
 
 type SymbolNotIndexedByConst struct {
