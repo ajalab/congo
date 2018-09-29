@@ -19,3 +19,12 @@ func IsABCIfConcatenated(s1, s2 string) {
 		fmt.Println("s1 + s2 is not ABC")
 	}
 }
+
+// IsLength3 checks whether the give string is of length 3.
+func IsLength3(s string) {
+	if len(s) == 3 {
+		fmt.Println("len(s) is 3")
+	} else {
+		fmt.Println("len(s) is not 3")
+	}
+}

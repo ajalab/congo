@@ -262,6 +262,17 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 }
 
+func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
+	switch ty := ty.(type) {
+	case *types.Basic:
+		if ty.Kind() == types.String {
+			return C.Z3_mk_seq_length(ctx, x)
+		}
+	}
+	log.Fatalf("z3MakeLen: invalid type: %T\n", ty)
+	panic("unimplemented")
+}
+
 func (s *Z3Solver) addConstraint(instr ssa.Instruction) {
 	block := instr.Block()
 	if s.currentBlock != block {
@@ -319,14 +330,6 @@ func (s *Z3Solver) addConstraint(instr ssa.Instruction) {
 		}
 		s.asts[instr] = v
 	case *ssa.Call:
-		fn, ok := instr.Call.Value.(*ssa.Function)
-		if !ok {
-			return
-		}
-		for i, arg := range instr.Call.Args {
-			ast := s.get(arg)
-			s.asts[fn.Params[i]] = ast
-		}
 		// TODO(ajalab): Support call stack.
 		// The current representation of a running trace is incomplete.
 		// Example:
@@ -337,6 +340,22 @@ func (s *Z3Solver) addConstraint(instr ssa.Instruction) {
 		//        t2 = ...
 		// In this case the running trace is like [main.0 a.0 ... a.N b.0 ... b.N]
 		// Change the unit of the trace from *ssa.BasicBlock to *ssa.Instruction?
+		switch fn := instr.Call.Value.(type) {
+		case *ssa.Function:
+			for i, arg := range instr.Call.Args {
+				s.asts[fn.Params[i]] = s.get(arg)
+			}
+		case *ssa.Builtin:
+			switch fn.Name() {
+			case "len":
+				arg := instr.Call.Args[0]
+				ast := s.get(arg)
+				s.asts[instr] = z3MakeLen(s.ctx, ast, arg.Type())
+			}
+		default:
+			log.Fatalln("addConstraint: Not supported function:", fn)
+			panic("unimplemented")
+		}
 	}
 
 }
