@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"go/types"
 	"log"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"golang.org/x/tools/go/ssa"
@@ -266,7 +267,7 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 	switch ty := ty.(type) {
 	case *types.Basic:
 		if ty.Kind() == types.String {
-			return C.Z3_mk_seq_length(ctx, x)
+			return C.Z3_mk_int2bv(ctx, strconv.IntSize, C.Z3_mk_seq_length(ctx, x))
 		}
 	}
 	log.Fatalf("z3MakeLen: invalid type: %T\n", ty)
@@ -431,6 +432,7 @@ func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
 		negCond = C.Z3_mk_not(s.ctx, negCond)
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
+	// fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	result := C.Z3_solver_check(s.ctx, solver)
 
@@ -528,7 +530,8 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 		}
 		switch basicTy.Kind() {
 		case types.String:
-			return C.GoString(C.Z3_get_string(s.ctx, ast)), nil
+			s, _ := strconv.Unquote(fmt.Sprintf(`"%s"`, C.GoString(C.Z3_get_string(s.ctx, ast))))
+			return s, nil
 		}
 
 		return nil, fmt.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)

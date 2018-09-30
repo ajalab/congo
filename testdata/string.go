@@ -28,3 +28,12 @@ func IsLength3(s string) {
 		fmt.Println("len(s) is not 3")
 	}
 }
+
+// IsABCIfConcatenatedNonNull is a function that checks if the concatenated non-null string s1 + s2 is equal to "ABC".
+func IsABCIfConcatenatedNonNull(s1, s2 string) {
+	if len(s1) > 0 && len(s2) > 0 && s1+s2 == "ABC" {
+		fmt.Println("s1 + s2 is ABC")
+	} else {
+		fmt.Println("s1 + s2 is not ABC")
+	}
+}
