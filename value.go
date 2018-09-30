@@ -3,6 +3,7 @@ package congo
 import (
 	"fmt"
 	"go/types"
+	"strconv"
 	"unsafe"
 
 	"golang.org/x/tools/go/ssa"
@@ -94,14 +95,12 @@ func zero(ty types.Type) interface{} {
 	panic(fmt.Sprint("zero: unexpected ", ty))
 }
 
-const intSize = 32 << (^uint(0) >> 63)
-
 func sizeOfBasicKind(k types.BasicKind) uint {
 	switch k {
 	case types.Int:
 		fallthrough
 	case types.Uint:
-		return intSize
+		return strconv.IntSize
 	case types.Int8:
 		fallthrough
 	case types.Uint8:

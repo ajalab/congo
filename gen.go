@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strconv"
 )
 
 func type2ASTExpr(ty types.Type) ast.Expr {
@@ -34,7 +35,7 @@ func value2ASTExpr(v interface{}, ty types.Type) ast.Expr {
 		case info&types.IsString > 0:
 			return &ast.BasicLit{
 				Kind:  token.STRING,
-				Value: fmt.Sprintf("\"%s\"", v.(string)),
+				Value: strconv.Quote(v.(string)),
 			}
 		default:
 			panic("unimplemented")
