@@ -1,4 +1,4 @@
-package congo
+package solver
 
 import (
 	// #cgo LDFLAGS: -lz3
@@ -26,14 +26,16 @@ type Z3Solver struct {
 	currentBlock *ssa.BasicBlock
 	prevBlock    *ssa.BasicBlock
 
-	assertions []*assertion
-	symbols    []*symbol
+	branches []*Z3Branch
+	symbols  []*symbol
 }
 
-type assertion struct {
-	instr ssa.Instruction
-	cond  C.Z3_ast
-	orig  bool
+// Z3Solver contains a branching instruction (*ssa.If) and
+// the direction taken in the concolic execution.
+type Z3Branch struct {
+	Instr     ssa.Instruction
+	Direction bool
+	ast       C.Z3_ast
 }
 
 type symbol struct {
@@ -68,8 +70,7 @@ func NewZ3Solver(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 		}
 		lastInstr := block.Instrs[len(block.Instrs)-1]
 		if ifInstr, ok := lastInstr.(*ssa.If); ok {
-			orig := block.Succs[0] == trace[i+1]
-			s.addAssertion(ifInstr, orig)
+			s.addBranch(ifInstr, block.Succs[0] == trace[i+1])
 		}
 	}
 
@@ -79,6 +80,16 @@ func NewZ3Solver(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 // Close deletes the Z3 context.
 func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
+}
+
+// NumBranches returns the number of branch instructions.
+func (s *Z3Solver) NumBranches() int {
+	return len(s.branches)
+}
+
+// Branch returns the i-th branch instruction.
+func (s *Z3Solver) Branch(i int) *Z3Branch {
+	return s.branches[i]
 }
 
 func (s *Z3Solver) addSymbol(ssaSymbol ssa.Value) error {
@@ -361,15 +372,15 @@ func (s *Z3Solver) addConstraint(instr ssa.Instruction) {
 
 }
 
-func (s *Z3Solver) addAssertion(ifInstr *ssa.If, orig bool) {
+func (s *Z3Solver) addBranch(ifInstr *ssa.If, direction bool) {
 	v := ifInstr.Cond
 	if cond, ok := s.asts[v]; ok {
-		assert := &assertion{
-			instr: ifInstr,
-			cond:  cond,
-			orig:  orig,
+		branch := &Z3Branch{
+			Instr:     ifInstr,
+			Direction: direction,
+			ast:       cond,
 		}
-		s.assertions = append(s.assertions, assert)
+		s.branches = append(s.branches, branch)
 	}
 }
 
@@ -413,22 +424,25 @@ func (s *Z3Solver) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
+// Solve solves the assertions and returns concrete values for symbols.
+// The condition to solve is p_0 /\ p_1 /\ ... /\ p_(k-1) /\ not(a_k)
+// where p_i is a predicate of the i-th branching instruction and k = negate.
+func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	solver := C.Z3_mk_solver(s.ctx)
 	C.Z3_solver_inc_ref(s.ctx, solver)
 	defer C.Z3_solver_dec_ref(s.ctx, solver)
-	for i := 0; i < negateAssertion; i++ {
-		assert := s.assertions[i]
-		cond := assert.cond
-		if !assert.orig {
+	for i := 0; i < negate; i++ {
+		branch := s.branches[i]
+		cond := s.branches[i].ast
+		if !branch.Direction {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
 		C.Z3_solver_assert(s.ctx, solver, cond)
 	}
 
-	negAssert := s.assertions[negateAssertion]
-	negCond := negAssert.cond
-	if negAssert.orig {
+	negBranch := s.branches[negate]
+	negCond := negBranch.ast
+	if negBranch.Direction {
 		negCond = C.Z3_mk_not(s.ctx, negCond)
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
@@ -457,9 +471,6 @@ func (s *Z3Solver) solve(negateAssertion int) ([]interface{}, error) {
 
 func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	values := make([]interface{}, len(s.symbols))
-	for i, symbol := range s.symbols {
-		values[i] = zero(symbol.ssa.Type())
-	}
 
 	n := int(C.Z3_model_get_num_consts(s.ctx, m))
 	for i := 0; i < n; i++ {
@@ -537,4 +548,30 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 		return nil, fmt.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
 	}
 	return nil, fmt.Errorf("cannot convert Z3_AST (kind: %d) of type %s", kind, ty)
+}
+
+func sizeOfBasicKind(k types.BasicKind) uint {
+	switch k {
+	case types.Int:
+		fallthrough
+	case types.Uint:
+		return strconv.IntSize
+	case types.Int8:
+		fallthrough
+	case types.Uint8:
+		return 8
+	case types.Int16:
+		fallthrough
+	case types.Uint16:
+		return 16
+	case types.Int32:
+		fallthrough
+	case types.Uint32:
+		return 32
+	case types.Int64:
+		fallthrough
+	case types.Uint64:
+		return 64
+	}
+	return 0
 }

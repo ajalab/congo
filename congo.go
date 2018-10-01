@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/ajalab/congo/interp"
+	"github.com/ajalab/congo/solver"
+
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
@@ -35,20 +37,19 @@ type Program struct {
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
 	values := make([]interface{}, n)
-	symbolTypes := make([]types.Type, n)
 	var symbolValues [][]interface{}
 	var returnValues []interface{}
 	covered := make(map[*ssa.BasicBlock]struct{})
 	coverage := 0.0
 
-	// We assign zero value for each symbol at first.
-	for i, symbol := range prog.symbols {
-		ty := symbol.Type()
-		values[i] = zero(ty)
-		symbolTypes[i] = ty
-	}
-
 	for i := uint(0); i < maxExec; i++ {
+		// Assign a zero value if the concrete value is nil.
+		for j, symbol := range prog.symbols {
+			if values[j] == nil {
+				values[j] = zero(symbol.Type())
+			}
+		}
+
 		// Interpret the program with the current symbol values.
 		// TODO(ajalab) handle panic occurred in the target
 		result, err := prog.Run(values)
@@ -80,13 +81,13 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			break
 		}
 
-		solver := NewZ3Solver(prog.symbols, result.Trace)
+		z3Solver := solver.NewZ3Solver(prog.symbols, result.Trace)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
-		for j := len(solver.assertions) - 1; j >= 0; j-- {
-			assertion := solver.assertions[j]
-			succs := assertion.instr.Block().Succs
+		for j := z3Solver.NumBranches() - 1; j >= 0; j-- {
+			branch := z3Solver.Branch(j)
+			succs := branch.Instr.Block().Succs
 			b := succs[0]
-			if assertion.orig {
+			if branch.Direction {
 				b = succs[1]
 			}
 			if _, ok := covered[b]; !ok {
@@ -98,18 +99,24 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		queue = append(queue, queueAfter...)
 
 		for _, j := range queue {
-			values, err = solver.solve(j)
+			values, err = z3Solver.Solve(j)
 			if err == nil {
 				break
-			} else if _, ok := err.(UnsatError); ok {
+			} else if _, ok := err.(solver.UnsatError); ok {
 				log.Println("unsat")
 			} else {
 				return nil, errors.Wrap(err, "failed to solve assertions")
 			}
 		}
 
-		solver.Close()
+		z3Solver.Close()
 	}
+
+	symbolTypes := make([]types.Type, n)
+	for i, symbol := range prog.symbols {
+		symbolTypes[i] = symbol.Type()
+	}
+
 	return &ExecuteResult{
 		Coverage:           coverage,
 		SymbolValues:       symbolValues,
