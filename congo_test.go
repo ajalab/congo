@@ -9,11 +9,10 @@ func TestRun(t *testing.T) {
 		packageName string
 		funcName    string
 	}{
-		{"github.com/ajalab/congo/testdata", "BranchSimple"},
+		{"github.com/ajalab/congo/testdata", "BranchLessThan"},
 		{"github.com/ajalab/congo/testdata", "BranchAnd"},
 		{"github.com/ajalab/congo/testdata", "BranchThreeVars"},
 		{"github.com/ajalab/congo/testdata", "BranchTenVars"},
-		{"github.com/ajalab/congo/testdata", "BranchStruct"},
 	}
 
 	for _, tc := range testCases {
@@ -66,6 +65,18 @@ func testExecute(testCases []executeTestCase, t *testing.T) {
 			t.Fatalf("%+v\ncoverage could not be accomplished: expected %f, actual %f\n", tc, tc.minCoverage, res.Coverage)
 		}
 	}
+}
+
+func TestExecuteBranch(t *testing.T) {
+	testCases := []executeTestCase{
+		{"github.com/ajalab/congo/testdata", "BranchLessThan", 2, 1},
+		{"github.com/ajalab/congo/testdata", "BranchAnd", 2, 1},
+		{"github.com/ajalab/congo/testdata", "BranchMultiple", 4, 1},
+		{"github.com/ajalab/congo/testdata", "BranchThreeVars", 2, 1},
+		{"github.com/ajalab/congo/testdata", "BranchTenVars", 2, 1},
+		{"github.com/ajalab/congo/testdata", "BranchSwitch", 4, 1},
+	}
+	testExecute(testCases, t)
 }
 
 func TestExecuteMaxMin(t *testing.T) {
