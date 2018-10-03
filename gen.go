@@ -17,6 +17,10 @@ func type2ASTExpr(ty types.Type) ast.Expr {
 			X:   ast.NewIdent(ty.Obj().Pkg().Name()),
 			Sel: ast.NewIdent(ty.Obj().Id()),
 		}
+	case *types.Pointer:
+		return &ast.StarExpr{
+			X: type2ASTExpr(ty.Elem()),
+		}
 	default:
 		panic("unimplemented")
 	}

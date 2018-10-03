@@ -24,10 +24,15 @@ func value2InterpValue(v interface{}, t types.Type) value {
 		for i, v := range vs {
 			values[i] = v.(value)
 		}
-
 		return values
 	case *types.Named:
 		return value2InterpValue(v, t.Underlying())
+	case *types.Pointer:
+		a := v.(*interface{})
+		if a == nil {
+			return nil
+		}
+		return &*a
 	}
 	return nil
 }
