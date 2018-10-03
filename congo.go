@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"log"
 	"reflect"
 	"strings"
@@ -151,6 +153,11 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},
 		"",
 		[]string{})
+}
+
+// Dump dumps the runner AST file into dest.
+func (prog *Program) DumpRunner(dest io.Writer) error {
+	return format.Node(dest, token.NewFileSet(), prog.runnerPackageInfo.Files[0])
 }
 
 // ExecuteResult is a type that contains the result of Program.Execute.

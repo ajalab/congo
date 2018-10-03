@@ -49,6 +49,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Config.Open: %v", err)
 	}
+	prog.DumpRunner(os.Stdout)
 
 	result, err := prog.Execute(*maxExec, *minCoverage)
 	if err != nil {
