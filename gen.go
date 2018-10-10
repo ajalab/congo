@@ -31,6 +31,12 @@ func value2ASTExpr(v interface{}, ty types.Type) ast.Expr {
 	case *types.Basic:
 		info := ty.Info()
 		switch {
+		case info&types.IsBoolean > 0:
+			s := "false"
+			if v.(bool) {
+				s = "true"
+			}
+			return ast.NewIdent(s)
 		case info&types.IsInteger > 0:
 			return &ast.BasicLit{
 				Kind:  token.INT,

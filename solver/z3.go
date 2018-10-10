@@ -108,16 +108,18 @@ func (s *Z3Solver) addSymbol(ssaSymbol ssa.Value) error {
 	switch ty := ssaSymbol.Type().(type) {
 	case *types.Basic:
 		info := ty.Info()
+		var sort C.Z3_sort
 		switch {
+		case info&types.IsBoolean > 0:
+			sort = C.Z3_mk_bool_sort(s.ctx)
 		case info&types.IsInteger > 0:
-			sort := C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
-			v = C.Z3_mk_const(s.ctx, symbolID, sort)
+			sort = C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
 		case info&types.IsString > 0:
-			sort := C.Z3_mk_string_sort(s.ctx)
-			v = C.Z3_mk_const(s.ctx, symbolID, sort)
+			sort = C.Z3_mk_string_sort(s.ctx)
 		default:
 			return fmt.Errorf("unsupported basic type: %v", ty)
 		}
+		v = C.Z3_mk_const(s.ctx, symbolID, sort)
 	default:
 		return fmt.Errorf("unsupported symbol type: %T", ty)
 	}
@@ -551,6 +553,9 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 		case types.String:
 			s, _ := strconv.Unquote(fmt.Sprintf(`"%s"`, C.GoString(C.Z3_get_string(s.ctx, ast))))
 			return s, nil
+		case types.Bool:
+			b := C.Z3_get_bool_value(s.ctx, ast)
+			return b == C.Z3_L_TRUE, nil
 		}
 
 		return nil, fmt.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
