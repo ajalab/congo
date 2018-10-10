@@ -155,7 +155,7 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 		[]string{})
 }
 
-// Dump dumps the runner AST file into dest.
+// DumpRunner dumps the runner AST file into dest.
 func (prog *Program) DumpRunner(dest io.Writer) error {
 	return format.Node(dest, token.NewFileSet(), prog.runnerPackageInfo.Files[0])
 }
