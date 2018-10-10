@@ -51,19 +51,35 @@ func (ue UnsatError) Error() string {
 }
 
 // NewZ3Solver returns a new Z3Solver.
-func NewZ3Solver(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
+func NewZ3Solver() *Z3Solver {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
 
 	ctx := C.Z3_mk_context(cfg)
-	s := &Z3Solver{
+	return &Z3Solver{
 		asts: make(map[ssa.Value]C.Z3_ast),
 		ctx:  ctx,
 	}
+}
 
+// Close deletes the Z3 context.
+func (s *Z3Solver) Close() {
+	C.Z3_del_context(s.ctx)
+}
+
+// LoadSymbols loads symbolic variables to the solver.
+func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 	for _, symbol := range symbols {
-		s.addSymbol(symbol)
+		err := s.addSymbol(symbol)
+		if err != nil {
+			return errors.Wrapf(err, "loadSymbols: failed to load symbol %s", symbol)
+		}
 	}
+	return nil
+}
+
+// LoadTrace loads a running trace to the solver.
+func (s *Z3Solver) LoadTrace(trace []*ssa.BasicBlock) {
 	for i, block := range trace {
 		for _, instr := range block.Instrs {
 			s.addConstraint(instr)
@@ -73,13 +89,6 @@ func NewZ3Solver(symbols []ssa.Value, trace []*ssa.BasicBlock) *Z3Solver {
 			s.addBranch(ifInstr, block.Succs[0] == trace[i+1])
 		}
 	}
-
-	return s
-}
-
-// Close deletes the Z3 context.
-func (s *Z3Solver) Close() {
-	C.Z3_del_context(s.ctx)
 }
 
 // NumBranches returns the number of branch instructions.
@@ -393,9 +402,8 @@ func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 	if a, ok := s.asts[v]; ok {
 		return a
 	}
+	log.Println("get: Corresponding Z3 AST was not found", v)
 	return nil
-	// log.Fatalln("get: Corresponding Z3 AST was not found", v)
-	// panic("unimplemented")
 }
 
 func (s *Z3Solver) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
@@ -433,7 +441,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	defer C.Z3_solver_dec_ref(s.ctx, solver)
 	for i := 0; i < negate; i++ {
 		branch := s.branches[i]
-		cond := s.branches[i].ast
+		cond := branch.ast
 		if !branch.Direction {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}

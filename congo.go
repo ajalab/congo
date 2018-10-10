@@ -83,7 +83,12 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			break
 		}
 
-		z3Solver := solver.NewZ3Solver(prog.symbols, result.Trace)
+		z3Solver := solver.NewZ3Solver()
+		err = z3Solver.LoadSymbols(prog.symbols)
+		if err != nil {
+			return nil, err
+		}
+		z3Solver.LoadTrace(result.Trace)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
 		for j := z3Solver.NumBranches() - 1; j >= 0; j-- {
 			branch := z3Solver.Branch(j)
