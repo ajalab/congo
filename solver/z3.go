@@ -414,7 +414,7 @@ func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 	if a, ok := s.asts[v]; ok {
 		return a
 	}
-	log.Println("get: Corresponding Z3 AST was not found", v)
+	log.Printf("get: Corresponding Z3 AST was not found for %s = %s in %s", v.Name(), v, v.Parent())
 	return nil
 }
 
