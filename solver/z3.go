@@ -1,9 +1,12 @@
 package solver
 
 import (
-	// #cgo LDFLAGS: -lz3
-	// #include <stdlib.h>
-	// #include <z3.h>
+	/*
+		#cgo LDFLAGS: -lz3
+		#include <stdlib.h>
+		#include <z3.h>
+		extern void goZ3ErrorHandler(Z3_context ctx, Z3_error_code e);
+	*/
 	"C"
 )
 import (
@@ -50,12 +53,19 @@ func (ue UnsatError) Error() string {
 	return "unsat"
 }
 
+//export goZ3ErrorHandler
+func goZ3ErrorHandler(ctx C.Z3_context, e C.Z3_error_code) {
+	msg := C.Z3_get_error_msg(ctx, e)
+	panic(C.GoString(msg))
+}
+
 // NewZ3Solver returns a new Z3Solver.
 func NewZ3Solver() *Z3Solver {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
 
 	ctx := C.Z3_mk_context(cfg)
+	C.Z3_set_error_handler(ctx, (*C.Z3_error_handler)(C.goZ3ErrorHandler))
 	return &Z3Solver{
 		asts: make(map[ssa.Value]C.Z3_ast),
 		ctx:  ctx,
