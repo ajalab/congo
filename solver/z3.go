@@ -30,7 +30,7 @@ type Z3Solver struct {
 	symbols  []*symbol
 }
 
-// Z3Solver contains a branching instruction (*ssa.If) and
+// Z3Branch contains a branching instruction (*ssa.If) and
 // the direction taken in the concolic execution.
 type Z3Branch struct {
 	Instr     ssa.Instruction
