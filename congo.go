@@ -160,9 +160,15 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 		[]string{})
 }
 
-// DumpRunner dumps the runner AST file into dest.
-func (prog *Program) DumpRunner(dest io.Writer) error {
+// DumpRunnerAST dumps the runner AST file into dest.
+func (prog *Program) DumpRunnerAST(dest io.Writer) error {
 	return format.Node(dest, token.NewFileSet(), prog.runnerPackageInfo.Files[0])
+}
+
+// DumpRunnerSSA dumps the runner SSA into dest.
+func (prog *Program) DumpRunnerSSA(dest io.Writer) error {
+	_, err := prog.runnerPackage.Func("main").WriteTo(dest)
+	return err
 }
 
 // ExecuteResult is a type that contains the result of Program.Execute.

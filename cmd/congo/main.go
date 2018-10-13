@@ -17,6 +17,7 @@ var (
 	minCoverage = flag.Float64("coverage", 1.0, "minimum coverage")
 	maxExec     = flag.Uint("maxexec", 10, "maximum execution time")
 	o           = flag.String("o", "", "destination path for generated test code")
+	verbose     = flag.Bool("v", false, "verbose output (debug info)")
 )
 
 func main() {
@@ -49,7 +50,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Config.Open: %v", err)
 	}
-	prog.DumpRunner(os.Stdout)
+	if *verbose {
+		prog.DumpRunnerAST(os.Stderr)
+		prog.DumpRunnerSSA(os.Stderr)
+	}
 
 	result, err := prog.Execute(*maxExec, *minCoverage)
 	if err != nil {
