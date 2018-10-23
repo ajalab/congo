@@ -61,6 +61,7 @@ func NewZ3Solver() *Z3Solver {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
 
+	// TODO(ajalab): We may have to use Z3_mk_context_rc and manually handle the reference count.
 	ctx := C.Z3_mk_context(cfg)
 	C.Z3_set_error_handler(ctx, (*C.Z3_error_handler)(C.goZ3ErrorHandler))
 	return &Z3Solver{
