@@ -26,9 +26,8 @@ type Z3Solver struct {
 	asts map[ssa.Value]C.Z3_ast
 	ctx  C.Z3_context
 
-	branches  []*Z3Branch
-	symbols   []*symbol
-	callStack []*ssa.Call
+	branches []*Z3Branch
+	symbols  []*symbol
 }
 
 // Z3Branch contains a branching instruction (*ssa.If) and
@@ -54,7 +53,7 @@ func (ue UnsatError) Error() string {
 //export goZ3ErrorHandler
 func goZ3ErrorHandler(ctx C.Z3_context, e C.Z3_error_code) {
 	msg := C.Z3_get_error_msg(ctx, e)
-	panic(C.GoString(msg))
+	panic("Z3 error occurred: " + C.GoString(msg))
 }
 
 // NewZ3Solver returns a new Z3Solver.
@@ -90,6 +89,7 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 	var currentBlock *ssa.BasicBlock
 	var prevBlock *ssa.BasicBlock
+	var callStack []*ssa.Call
 	for i, instr := range trace {
 		block := instr.Block()
 		if currentBlock != block {
@@ -107,10 +107,10 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 			}
 		case *ssa.Phi:
 			var v C.Z3_ast
-			for i, pred := range instr.Block().Preds {
+			for j, pred := range instr.Block().Preds {
 				if pred == prevBlock {
 					// TODO(ajalab) New variable?
-					v = s.get(instr.Edges[i])
+					v = s.get(instr.Edges[j])
 					break
 				}
 			}
@@ -128,8 +128,13 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 			// Change the unit of the trace from *ssa.BasicBlock to *ssa.Instruction?
 			switch fn := instr.Call.Value.(type) {
 			case *ssa.Function:
-				for i, arg := range instr.Call.Args {
-					s.asts[fn.Params[i]] = s.get(arg)
+				// Is the called function recorded?
+				if i < len(trace)-1 && trace[i+1].Parent() == fn {
+					for j, arg := range instr.Call.Args {
+						s.asts[fn.Params[j]] = s.get(arg)
+					}
+					callStack = append(callStack, instr)
+				} else {
 				}
 			case *ssa.Builtin:
 				switch fn.Name() {
@@ -142,6 +147,17 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 				log.Fatalln("addConstraint: Not supported function:", fn)
 				panic("unimplemented")
 			}
+		case *ssa.Return:
+			callInstr := callStack[len(callStack)-1]
+			// TODO(ajalab) Support multiple return values
+			switch len(instr.Results) {
+			case 0:
+			case 1:
+				s.asts[callInstr] = s.get(instr.Results[0])
+			default:
+				log.Fatalln("multiple return values are not supported")
+			}
+			callStack = callStack[:len(callStack)-1]
 		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
 			thenBlock := instr.Block().Succs[0]
