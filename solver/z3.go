@@ -29,8 +29,9 @@ type Z3Solver struct {
 	currentBlock *ssa.BasicBlock
 	prevBlock    *ssa.BasicBlock
 
-	branches []*Z3Branch
-	symbols  []*symbol
+	branches  []*Z3Branch
+	symbols   []*symbol
+	callStack []*ssa.Call
 }
 
 // Z3Branch contains a branching instruction (*ssa.If) and
@@ -92,6 +93,53 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 	for i, instr := range trace {
 		s.addConstraint(instr)
+		block := instr.Block()
+		if s.currentBlock != block {
+			s.prevBlock = s.currentBlock
+			s.currentBlock = block
+		}
+
+		switch instr := instr.(type) {
+		case *ssa.BinOp:
+			s.asts[instr] = s.binop(instr)
+		case *ssa.Phi:
+			var v C.Z3_ast
+			for i, pred := range instr.Block().Preds {
+				if pred == s.prevBlock {
+					// TODO(ajalab) New variable?
+					v = s.get(instr.Edges[i])
+					break
+				}
+			}
+			s.asts[instr] = v
+		case *ssa.Call:
+			// TODO(ajalab): Support call stack.
+			// The current representation of a running trace is incomplete.
+			// Example:
+			//    func main()
+			//    .0:
+			//        t0 = a()
+			//        t1 = b()
+			//        t2 = ...
+			// In this case the running trace is like [main.0 a.0 ... a.N b.0 ... b.N]
+			// Change the unit of the trace from *ssa.BasicBlock to *ssa.Instruction?
+			switch fn := instr.Call.Value.(type) {
+			case *ssa.Function:
+				for i, arg := range instr.Call.Args {
+					s.asts[fn.Params[i]] = s.get(arg)
+				}
+			case *ssa.Builtin:
+				switch fn.Name() {
+				case "len":
+					arg := instr.Call.Args[0]
+					ast := s.get(arg)
+					s.asts[instr] = z3MakeLen(s.ctx, ast, arg.Type())
+				}
+			default:
+				log.Fatalln("addConstraint: Not supported function:", fn)
+				panic("unimplemented")
+			}
+		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
 			thenBlock := instr.Block().Succs[0]
 			nextBlock := trace[i+1].Block()
@@ -294,6 +342,48 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 }
 
+func (s *Z3Solver) binop(instr *ssa.BinOp) C.Z3_ast {
+	x := s.get(instr.X)
+	y := s.get(instr.Y)
+	ty := instr.X.Type()
+	if x == nil {
+		log.Fatalln("binop: left operand is not registered", instr)
+		panic("unreachable")
+	}
+	if y == nil {
+		log.Fatalln("binop: right operand is not registered", instr)
+		panic("unreachable")
+	}
+	args := []C.Z3_ast{x, y}
+	switch instr.Op {
+	case token.ADD:
+		return z3MakeAdd(s.ctx, x, y, ty)
+	case token.SUB:
+		return z3MakeSub(s.ctx, x, y, ty)
+	case token.MUL:
+		return z3MakeMul(s.ctx, x, y, ty)
+	case token.QUO:
+		return z3MakeDiv(s.ctx, x, y, ty)
+	case token.EQL:
+		return C.Z3_mk_eq(s.ctx, x, y)
+	case token.LSS:
+		return z3MakeLt(s.ctx, x, y, ty)
+	case token.LEQ:
+		return z3MakeLe(s.ctx, x, y, ty)
+	case token.GTR:
+		return z3MakeGt(s.ctx, x, y, ty)
+	case token.GEQ:
+		return z3MakeGe(s.ctx, x, y, ty)
+	case token.LAND:
+		return C.Z3_mk_and(s.ctx, 2, &args[0])
+	case token.LOR:
+		return C.Z3_mk_or(s.ctx, 2, &args[0])
+	default:
+		log.Fatalln("binop: Not implemented BinOp: ", instr)
+		panic("unimplemented")
+	}
+}
+
 func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 	switch ty := ty.(type) {
 	case *types.Basic:
@@ -306,89 +396,6 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 }
 
 func (s *Z3Solver) addConstraint(instr ssa.Instruction) {
-	block := instr.Block()
-	if s.currentBlock != block {
-		s.prevBlock = s.currentBlock
-		s.currentBlock = block
-	}
-
-	switch instr := instr.(type) {
-	case *ssa.BinOp:
-		var v C.Z3_ast
-		x := s.get(instr.X)
-		y := s.get(instr.Y)
-		ty := instr.X.Type()
-		if x == nil || y == nil {
-			return
-		}
-		args := []C.Z3_ast{x, y}
-		switch instr.Op {
-		case token.ADD:
-			v = z3MakeAdd(s.ctx, x, y, ty)
-		case token.SUB:
-			v = z3MakeSub(s.ctx, x, y, ty)
-		case token.MUL:
-			v = z3MakeMul(s.ctx, x, y, ty)
-		case token.QUO:
-			v = z3MakeDiv(s.ctx, x, y, ty)
-		case token.EQL:
-			v = C.Z3_mk_eq(s.ctx, x, y)
-		case token.LSS:
-			v = z3MakeLt(s.ctx, x, y, ty)
-		case token.LEQ:
-			v = z3MakeLe(s.ctx, x, y, ty)
-		case token.GTR:
-			v = z3MakeGt(s.ctx, x, y, ty)
-		case token.GEQ:
-			v = z3MakeGe(s.ctx, x, y, ty)
-		case token.LAND:
-			v = C.Z3_mk_and(s.ctx, 2, &args[0])
-		case token.LOR:
-			v = C.Z3_mk_or(s.ctx, 2, &args[0])
-
-		default:
-			log.Fatalln("addConstraint: Not implemented BinOp: ", instr)
-			panic("unimplemented")
-		}
-		s.asts[instr] = v
-	case *ssa.Phi:
-		var v C.Z3_ast
-		for i, pred := range instr.Block().Preds {
-			if pred == s.prevBlock {
-				// TODO(ajalab) New variable?
-				v = s.get(instr.Edges[i])
-				break
-			}
-		}
-		s.asts[instr] = v
-	case *ssa.Call:
-		// TODO(ajalab): Support call stack.
-		// The current representation of a running trace is incomplete.
-		// Example:
-		//    func main()
-		//    .0:
-		//        t0 = a()
-		//        t1 = b()
-		//        t2 = ...
-		// In this case the running trace is like [main.0 a.0 ... a.N b.0 ... b.N]
-		// Change the unit of the trace from *ssa.BasicBlock to *ssa.Instruction?
-		switch fn := instr.Call.Value.(type) {
-		case *ssa.Function:
-			for i, arg := range instr.Call.Args {
-				s.asts[fn.Params[i]] = s.get(arg)
-			}
-		case *ssa.Builtin:
-			switch fn.Name() {
-			case "len":
-				arg := instr.Call.Args[0]
-				ast := s.get(arg)
-				s.asts[instr] = z3MakeLen(s.ctx, ast, arg.Type())
-			}
-		default:
-			log.Fatalln("addConstraint: Not supported function:", fn)
-			panic("unimplemented")
-		}
-	}
 
 }
 
