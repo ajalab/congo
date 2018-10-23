@@ -91,7 +91,7 @@ type interpreter struct {
 	goroutines         int32                // atomically updated
 
 	congoTraceTarget *ssa.Function
-	congoTrace       []*ssa.BasicBlock
+	congoTrace       []ssa.Instruction
 	congoReturnValue interface{}
 	// TODO(ajalab) Use mutex to update congoTrace?
 	// congoMutex sync.Mutex
@@ -580,14 +580,14 @@ func runFrame(fr *frame) {
 	}()
 
 	for {
-		if tracing {
-			fr.i.congoTrace = append(fr.i.congoTrace, fr.block)
-		}
 		if fr.i.mode&EnableTracing != 0 {
 			fmt.Fprintf(os.Stderr, ".%s:\n", fr.block)
 		}
 	block:
 		for _, instr := range fr.block.Instrs {
+			if tracing {
+				fr.i.congoTrace = append(fr.i.congoTrace, instr)
+			}
 			if fr.i.mode&EnableTracing != 0 {
 				if v, ok := instr.(ssa.Value); ok {
 					fmt.Fprintln(os.Stderr, "\t", v.Name(), "=", instr)
@@ -694,7 +694,7 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 		goroutines: 1,
 
 		congoTraceTarget: targetfunc,
-		congoTrace:       make([]*ssa.BasicBlock, 0),
+		congoTrace:       make([]ssa.Instruction, 0),
 	}
 
 	runtimePkg := i.prog.ImportedPackage("runtime")

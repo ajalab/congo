@@ -89,14 +89,13 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 }
 
 // LoadTrace loads a running trace to the solver.
-func (s *Z3Solver) LoadTrace(trace []*ssa.BasicBlock) {
-	for i, block := range trace {
-		for _, instr := range block.Instrs {
-			s.addConstraint(instr)
-		}
-		lastInstr := block.Instrs[len(block.Instrs)-1]
-		if ifInstr, ok := lastInstr.(*ssa.If); ok {
-			s.addBranch(ifInstr, block.Succs[0] == trace[i+1])
+func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
+	for i, instr := range trace {
+		s.addConstraint(instr)
+		if ifInstr, ok := instr.(*ssa.If); ok {
+			thenBlock := instr.Block().Succs[0]
+			nextBlock := trace[i+1].Block()
+			s.addBranch(ifInstr, thenBlock == nextBlock)
 		}
 	}
 }
