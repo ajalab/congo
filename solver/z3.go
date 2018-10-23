@@ -26,9 +26,6 @@ type Z3Solver struct {
 	asts map[ssa.Value]C.Z3_ast
 	ctx  C.Z3_context
 
-	currentBlock *ssa.BasicBlock
-	prevBlock    *ssa.BasicBlock
-
 	branches  []*Z3Branch
 	symbols   []*symbol
 	callStack []*ssa.Call
@@ -91,12 +88,13 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 
 // LoadTrace loads a running trace to the solver.
 func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
+	var currentBlock *ssa.BasicBlock
+	var prevBlock *ssa.BasicBlock
 	for i, instr := range trace {
-		s.addConstraint(instr)
 		block := instr.Block()
-		if s.currentBlock != block {
-			s.prevBlock = s.currentBlock
-			s.currentBlock = block
+		if currentBlock != block {
+			prevBlock = currentBlock
+			currentBlock = block
 		}
 
 		switch instr := instr.(type) {
@@ -105,7 +103,7 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 		case *ssa.Phi:
 			var v C.Z3_ast
 			for i, pred := range instr.Block().Preds {
-				if pred == s.prevBlock {
+				if pred == prevBlock {
 					// TODO(ajalab) New variable?
 					v = s.get(instr.Edges[i])
 					break
@@ -393,10 +391,6 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 	log.Fatalf("z3MakeLen: invalid type: %T\n", ty)
 	panic("unimplemented")
-}
-
-func (s *Z3Solver) addConstraint(instr ssa.Instruction) {
-
 }
 
 func (s *Z3Solver) addBranch(ifInstr *ssa.If, direction bool) {
