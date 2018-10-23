@@ -99,7 +99,12 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 
 		switch instr := instr.(type) {
 		case *ssa.BinOp:
-			s.asts[instr] = s.binop(instr)
+			// TODO(ajalab) handle errors
+			var err error
+			s.asts[instr], err = s.binop(instr)
+			if err != nil {
+				log.Println(err)
+			}
 		case *ssa.Phi:
 			var v C.Z3_ast
 			for i, pred := range instr.Block().Preds {
@@ -340,45 +345,42 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 }
 
-func (s *Z3Solver) binop(instr *ssa.BinOp) C.Z3_ast {
+func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 	x := s.get(instr.X)
 	y := s.get(instr.Y)
 	ty := instr.X.Type()
 	if x == nil {
-		log.Fatalln("binop: left operand is not registered", instr)
-		panic("unreachable")
+		return nil, fmt.Errorf("binop: left operand is not registered: %v", instr)
 	}
 	if y == nil {
-		log.Fatalln("binop: right operand is not registered", instr)
-		panic("unreachable")
+		return nil, fmt.Errorf("binop: right operand is not registered: %v", instr)
 	}
 	args := []C.Z3_ast{x, y}
 	switch instr.Op {
 	case token.ADD:
-		return z3MakeAdd(s.ctx, x, y, ty)
+		return z3MakeAdd(s.ctx, x, y, ty), nil
 	case token.SUB:
-		return z3MakeSub(s.ctx, x, y, ty)
+		return z3MakeSub(s.ctx, x, y, ty), nil
 	case token.MUL:
-		return z3MakeMul(s.ctx, x, y, ty)
+		return z3MakeMul(s.ctx, x, y, ty), nil
 	case token.QUO:
-		return z3MakeDiv(s.ctx, x, y, ty)
+		return z3MakeDiv(s.ctx, x, y, ty), nil
 	case token.EQL:
-		return C.Z3_mk_eq(s.ctx, x, y)
+		return C.Z3_mk_eq(s.ctx, x, y), nil
 	case token.LSS:
-		return z3MakeLt(s.ctx, x, y, ty)
+		return z3MakeLt(s.ctx, x, y, ty), nil
 	case token.LEQ:
-		return z3MakeLe(s.ctx, x, y, ty)
+		return z3MakeLe(s.ctx, x, y, ty), nil
 	case token.GTR:
-		return z3MakeGt(s.ctx, x, y, ty)
+		return z3MakeGt(s.ctx, x, y, ty), nil
 	case token.GEQ:
-		return z3MakeGe(s.ctx, x, y, ty)
+		return z3MakeGe(s.ctx, x, y, ty), nil
 	case token.LAND:
-		return C.Z3_mk_and(s.ctx, 2, &args[0])
+		return C.Z3_mk_and(s.ctx, 2, &args[0]), nil
 	case token.LOR:
-		return C.Z3_mk_or(s.ctx, 2, &args[0])
+		return C.Z3_mk_or(s.ctx, 2, &args[0]), nil
 	default:
-		log.Fatalln("binop: Not implemented BinOp: ", instr)
-		panic("unimplemented")
+		return nil, fmt.Errorf("binop: not implemented: %v", instr)
 	}
 }
 
