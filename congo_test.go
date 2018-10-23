@@ -100,3 +100,10 @@ func TestExecuteString(t *testing.T) {
 	}
 	testExecute(testCases, t)
 }
+
+func TestExecuteCall(t *testing.T) {
+	testCases := []executeTestCase{
+		{"github.com/ajalab/congo/testdata", "UsePlus", 3, 1},
+	}
+	testExecute(testCases, t)
+}
