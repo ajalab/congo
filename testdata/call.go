@@ -15,3 +15,20 @@ func UsePlus(a, b, c int) {
 		}
 	}
 }
+
+func factor(n int) int {
+	if n > 1 {
+		return n * factor(n-1)
+	}
+	return 1
+
+}
+
+func Factor5040(n int) {
+	f := factor(n)
+	if f == 5040 {
+		fmt.Println("n! == 5040")
+	} else {
+		fmt.Println("n! != 5040")
+	}
+}
