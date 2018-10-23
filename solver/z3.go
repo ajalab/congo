@@ -117,16 +117,6 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 			}
 			s.asts[instr] = v
 		case *ssa.Call:
-			// TODO(ajalab): Support call stack.
-			// The current representation of a running trace is incomplete.
-			// Example:
-			//    func main()
-			//    .0:
-			//        t0 = a()
-			//        t1 = b()
-			//        t2 = ...
-			// In this case the running trace is like [main.0 a.0 ... a.N b.0 ... b.N]
-			// Change the unit of the trace from *ssa.BasicBlock to *ssa.Instruction?
 			switch fn := instr.Call.Value.(type) {
 			case *ssa.Function:
 				// Is the called function recorded?
