@@ -375,13 +375,10 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (s *Z3Solver) addBranchIf(ifInstr *ssa.If, direction bool) {
-}
-
 func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 	switch v := v.(type) {
 	case *ssa.Const:
-		return s.getZ3ConstAST(v)
+		return s.getConstAST(v)
 	}
 
 	if a, ok := s.asts[v]; ok {
@@ -391,7 +388,7 @@ func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 	return nil
 }
 
-func (s *Z3Solver) getZ3ConstAST(v *ssa.Const) C.Z3_ast {
+func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 	switch ty := v.Type().(type) {
 	case *types.Basic:
 		info := ty.Info()
