@@ -30,7 +30,7 @@ func value2InterpValue(v interface{}, t types.Type) value {
 	case *types.Pointer:
 		a := v.(*interface{})
 		if a == nil {
-			return nil
+			return (*value)(nil)
 		}
 		return &*a
 	}
