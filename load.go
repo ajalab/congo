@@ -28,7 +28,7 @@ const packageRunnerPath = "congomain"
 
 // Open opens the target program
 func (c *Config) Open() (*Program, error) {
-	runnerFile, err := generateRunnerFile(c.PackageName, c.FuncName)
+	runnerFile, err := generateRunner(c.PackageName, c.FuncName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}

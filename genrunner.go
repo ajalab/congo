@@ -12,7 +12,7 @@ import (
 	"golang.org/x/tools/go/loader"
 )
 
-func generateRunnerFile(packageName, funcName string) (*ast.File, error) {
+func generateRunner(packageName, funcName string) (*ast.File, error) {
 	packageSplit := strings.Split(packageName, "/")
 	packageIdent := packageSplit[len(packageSplit)-1]
 
