@@ -72,6 +72,8 @@ func TestExecuteBranch(t *testing.T) {
 		{"github.com/ajalab/congo/testdata", "BranchLessThan", 2, 1},
 		{"github.com/ajalab/congo/testdata", "BranchAnd", 2, 1},
 		{"github.com/ajalab/congo/testdata", "BranchMultiple", 4, 1},
+		{"github.com/ajalab/congo/testdata", "BranchPhi", 2, 1},
+		{"github.com/ajalab/congo/testdata", "BranchPhi2", 3, 1},
 		{"github.com/ajalab/congo/testdata", "BranchThreeVars", 2, 1},
 		{"github.com/ajalab/congo/testdata", "BranchTenVars", 2, 1},
 		{"github.com/ajalab/congo/testdata", "BranchSwitch", 4, 1},
