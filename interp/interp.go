@@ -759,6 +759,19 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 	// Top-level error handler.
 	exitCode := 2
 	defer func() {
+		switch p := recover().(type) {
+		case nil:
+		case exitPanic:
+			exitCode = int(p)
+		case targetPanic:
+			err = errors.New("panic: " + toString(p.v))
+		case runtime.Error:
+			err = p // errors.New("panic: " + p.Error())
+		case string:
+			err = errors.New("panic: " + p)
+		default:
+			err = fmt.Errorf("panic: unexpected type: %T: %v", p, p)
+		}
 		if exitCode != 2 || i.mode&DisableRecover != 0 {
 			result = &CongoInterpResult{
 				ExitCode:    exitCode,
@@ -766,19 +779,6 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 				ReturnValue: i.congoReturnValue,
 			}
 			return
-		}
-		switch p := recover().(type) {
-		case exitPanic:
-			exitCode = int(p)
-			return
-		case targetPanic:
-			err = errors.New("panic: " + toString(p.v))
-		case runtime.Error:
-			err = errors.New("panic:" + p.Error())
-		case string:
-			err = errors.New("panic:" + p)
-		default:
-			err = fmt.Errorf("panic: unexpected type: %T: %v", p, p)
 		}
 
 		// TODO(adonovan): dump panicking interpreter goroutine?
