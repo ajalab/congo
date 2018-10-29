@@ -27,7 +27,7 @@ type Z3Solver struct {
 	ctx  C.Z3_context
 
 	branches []*Z3Branch
-	symbols  []*symbol
+	symbols  []ssa.Value
 }
 
 // Z3Branch contains a branching instruction (*ssa.If) and
@@ -36,11 +36,6 @@ type Z3Branch struct {
 	Instr     ssa.Instruction
 	Direction bool
 	ast       C.Z3_ast
-}
-
-type symbol struct {
-	z3  C.Z3_ast
-	ssa ssa.Value
 }
 
 // UnsatError is an error describing that Z3 constraints were unsatisfied.
@@ -77,12 +72,34 @@ func (s *Z3Solver) Close() {
 
 // LoadSymbols loads symbolic variables to the solver.
 func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
-	for _, symbol := range symbols {
-		err := s.addSymbol(symbol)
-		if err != nil {
-			return errors.Wrapf(err, "loadSymbols: failed to load symbol %s", symbol)
+	s.symbols = make([]ssa.Value, len(symbols))
+	for i, value := range symbols {
+		var ast C.Z3_ast
+		symbolID := C.Z3_mk_int_symbol(s.ctx, C.int(i))
+
+		switch ty := value.Type().(type) {
+		case *types.Basic:
+			info := ty.Info()
+			var sort C.Z3_sort
+			switch {
+			case info&types.IsBoolean > 0:
+				sort = C.Z3_mk_bool_sort(s.ctx)
+			case info&types.IsInteger > 0:
+				sort = C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+			case info&types.IsString > 0:
+				sort = C.Z3_mk_string_sort(s.ctx)
+			default:
+				return fmt.Errorf("unsupported basic type: %v", ty)
+			}
+			ast = C.Z3_mk_const(s.ctx, symbolID, sort)
+		default:
+			return fmt.Errorf("unsupported symbol type: %T", ty)
+		}
+		if ast != nil {
+			s.asts[value] = ast
 		}
 	}
+	copy(s.symbols, symbols)
 	return nil
 }
 
@@ -166,40 +183,6 @@ func (s *Z3Solver) NumBranches() int {
 // Branch returns the i-th branch instruction.
 func (s *Z3Solver) Branch(i int) *Z3Branch {
 	return s.branches[i]
-}
-
-func (s *Z3Solver) addSymbol(ssaSymbol ssa.Value) error {
-	var v C.Z3_ast
-	symbolID := C.Z3_mk_int_symbol(s.ctx, C.int(len(s.symbols)))
-
-	switch ty := ssaSymbol.Type().(type) {
-	case *types.Basic:
-		info := ty.Info()
-		var sort C.Z3_sort
-		switch {
-		case info&types.IsBoolean > 0:
-			sort = C.Z3_mk_bool_sort(s.ctx)
-		case info&types.IsInteger > 0:
-			sort = C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
-		case info&types.IsString > 0:
-			sort = C.Z3_mk_string_sort(s.ctx)
-		default:
-			return fmt.Errorf("unsupported basic type: %v", ty)
-		}
-		v = C.Z3_mk_const(s.ctx, symbolID, sort)
-	default:
-		return fmt.Errorf("unsupported symbol type: %T", ty)
-	}
-	if v != nil {
-		s.asts[ssaSymbol] = v
-	}
-
-	s.symbols = append(s.symbols, &symbol{
-		ssa: ssaSymbol,
-		z3:  v,
-	})
-
-	return nil
 }
 
 func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
@@ -517,7 +500,7 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 			return nil, fmt.Errorf("failed to get symbol[%d] from the model", i)
 		}
 
-		v, err := s.astToValue(ast, s.symbols[idx].ssa.Type())
+		v, err := s.astToValue(ast, s.symbols[idx].Type())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
 		}
