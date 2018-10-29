@@ -26,23 +26,8 @@ type Z3Solver struct {
 	asts map[ssa.Value]C.Z3_ast
 	ctx  C.Z3_context
 
-	branches []*Z3Branch
+	branches []*IfBranch
 	symbols  []ssa.Value
-}
-
-// Z3Branch contains a branching instruction (*ssa.If) and
-// the direction taken in the concolic execution.
-type Z3Branch struct {
-	Instr     ssa.Instruction
-	Direction bool
-	ast       C.Z3_ast
-}
-
-// UnsatError is an error describing that Z3 constraints were unsatisfied.
-type UnsatError struct{}
-
-func (ue UnsatError) Error() string {
-	return "unsat"
 }
 
 //export goZ3ErrorHandler
@@ -168,9 +153,11 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 			callStack = callStack[:len(callStack)-1]
 		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
-			thenBlock := instr.Block().Succs[0]
-			nextBlock := trace[i+1].Block()
-			s.addBranch(ifInstr, thenBlock == nextBlock)
+			if s.get(ifInstr.Cond) != nil {
+				thenBlock := instr.Block().Succs[0]
+				nextBlock := trace[i+1].Block()
+				s.addIfBranch(ifInstr, thenBlock == nextBlock)
+			}
 		}
 	}
 }
@@ -181,7 +168,7 @@ func (s *Z3Solver) NumBranches() int {
 }
 
 // Branch returns the i-th branch instruction.
-func (s *Z3Solver) Branch(i int) *Z3Branch {
+func (s *Z3Solver) Branch(i int) *IfBranch {
 	return s.branches[i]
 }
 
@@ -385,16 +372,11 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (s *Z3Solver) addBranch(ifInstr *ssa.If, direction bool) {
-	v := ifInstr.Cond
-	if cond, ok := s.asts[v]; ok {
-		branch := &Z3Branch{
-			Instr:     ifInstr,
-			Direction: direction,
-			ast:       cond,
-		}
-		s.branches = append(s.branches, branch)
-	}
+func (s *Z3Solver) addIfBranch(ifInstr *ssa.If, direction bool) {
+	s.branches = append(s.branches, &IfBranch{
+		Instr:     ifInstr,
+		Direction: direction,
+	})
 }
 
 func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
@@ -445,7 +427,12 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	defer C.Z3_solver_dec_ref(s.ctx, solver)
 	for i := 0; i < negate; i++ {
 		branch := s.branches[i]
-		cond := branch.ast
+		cond := s.get(branch.Instr.Cond)
+		if cond == nil {
+			// ignore
+			log.Printf("corresponding AST for branching condition was not found: %+v", branch.Instr)
+			continue
+		}
 		if !branch.Direction {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
@@ -453,7 +440,10 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	}
 
 	negBranch := s.branches[negate]
-	negCond := negBranch.ast
+	negCond := s.get(negBranch.Instr.Cond)
+	if negCond == nil {
+		return nil, fmt.Errorf("corresponding AST for branching condition was not found: %+v", negBranch.Instr)
+	}
 	if negBranch.Direction {
 		negCond = C.Z3_mk_not(s.ctx, negCond)
 	}
