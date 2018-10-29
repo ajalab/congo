@@ -10,3 +10,13 @@ func PLessThan5(a *int) {
 		fmt.Println("*a is greater than or equal to 5")
 	}
 }
+
+var PVar int = 3
+
+func PEquals(a *int) {
+	if a == &PVar {
+		fmt.Println("&a == &PVar")
+	} else {
+		fmt.Println("&a != &PVar")
+	}
+}
