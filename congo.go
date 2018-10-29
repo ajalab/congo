@@ -56,7 +56,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		// TODO(ajalab) handle panic occurred in the target
 		result, err := prog.Run(values)
 		if err != nil {
-			return nil, errors.Wrapf(err, "prog.Execute: failed to run with symbol values %v", values)
+			return nil, errors.Wrapf(err, "failed to run with symbol values %v", values)
 		}
 
 		// Update the covered blocks.

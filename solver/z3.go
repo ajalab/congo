@@ -473,7 +473,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 		}
 		values, err := s.getSymbolValues(m)
 		if err != nil {
-			return nil, errors.Wrapf(err, "solve: failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(s.ctx, m)))
+			return nil, errors.Wrapf(err, "failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		}
 		return values, nil
 	default:

@@ -26,7 +26,7 @@ func main() {
 	var packageName, funcName string
 	if flag.NArg() < 2 {
 		packageName = "github.com/ajalab/congo/testdata"
-		funcName = "BranchSimple"
+		funcName = "Factor5040"
 	} else {
 		packageName = flag.Arg(0)
 		funcName = flag.Arg(1)
@@ -57,11 +57,11 @@ func main() {
 
 	result, err := prog.Execute(*maxExec, *minCoverage)
 	if err != nil {
-		log.Fatalf("failed to perform concolic execution: %v", err)
+		log.Fatalf("failed to perform concolic execution: %+v", err)
 	}
 	f, err := result.GenerateTest()
 	if err != nil {
-		log.Fatalf("failed to generate test: %v", err)
+		log.Fatalf("failed to generate test: %+v", err)
 	}
 
 	dest := os.Stdout
