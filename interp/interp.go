@@ -772,13 +772,10 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 		default:
 			err = fmt.Errorf("panic: unexpected type: %T: %v", p, p)
 		}
-		if exitCode != 2 || i.mode&DisableRecover != 0 {
-			result = &CongoInterpResult{
-				ExitCode:    exitCode,
-				Trace:       i.congoTrace,
-				ReturnValue: i.congoReturnValue,
-			}
-			return
+		result = &CongoInterpResult{
+			ExitCode:    exitCode,
+			Trace:       i.congoTrace,
+			ReturnValue: i.congoReturnValue,
 		}
 
 		// TODO(adonovan): dump panicking interpreter goroutine?
