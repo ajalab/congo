@@ -53,7 +53,6 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		}
 
 		// Interpret the program with the current symbol values.
-		// TODO(ajalab) handle panic occurred in the target
 		result, err := prog.Run(values)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to run with symbol values %v", values)
@@ -92,16 +91,17 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		z3Solver.LoadTrace(result.Trace)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
 		for j := z3Solver.NumBranches() - 1; j >= 0; j-- {
-			branch := z3Solver.Branch(j)
-			succs := branch.Instr.Block().Succs
-			b := succs[0]
-			if branch.Direction {
-				b = succs[1]
-			}
-			if _, ok := covered[b]; !ok {
-				queue = append(queue, j)
-			} else {
-				queueAfter = append(queueAfter, j)
+			if branch, ok := z3Solver.Branch(j).(*solver.BranchIf); ok {
+				succs := branch.Succs()
+				b := succs[0]
+				if branch.Direction {
+					b = succs[1]
+				}
+				if _, ok := covered[b]; !ok {
+					queue = append(queue, j)
+				} else {
+					queueAfter = append(queueAfter, j)
+				}
 			}
 		}
 		queue = append(queue, queueAfter...)
