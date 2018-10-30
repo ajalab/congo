@@ -14,11 +14,3 @@ func QuadraticEq1(x int) {
 		fmt.Printf("%d is not a solution of x^2 - 3x + 4\n", x)
 	}
 }
-
-func AddOverflow(n uint8) {
-	if n+50 == 32 {
-		fmt.Println("n + 50 == 32")
-	} else {
-		fmt.Println("n + 50 =/= 32")
-	}
-}

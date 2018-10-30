@@ -79,6 +79,16 @@ func TestExecuteBool(t *testing.T) {
 	testExecute(testCases, t)
 }
 
+func TestExecuteInt(t *testing.T) {
+	testCases := []executeTestCase{
+		{"github.com/ajalab/congo/testdata", "IntNeg", 2, 1},
+		{"github.com/ajalab/congo/testdata", "IntNegUnsigned", 2, 1},
+		{"github.com/ajalab/congo/testdata", "AddOverflow", 2, 1},
+		{"github.com/ajalab/congo/testdata", "SubOverflow", 2, 1},
+	}
+	testExecute(testCases, t)
+}
+
 func TestExecuteBranch(t *testing.T) {
 	testCases := []executeTestCase{
 		{"github.com/ajalab/congo/testdata", "BranchLessThan", 2, 1},
