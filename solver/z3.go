@@ -101,6 +101,12 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 		}
 
 		switch instr := instr.(type) {
+		case *ssa.UnOp:
+			var err error
+			s.asts[instr], err = s.unop(instr)
+			if err != nil {
+				log.Println(err)
+			}
 		case *ssa.BinOp:
 			// TODO(ajalab) handle errors
 			var err error
@@ -325,6 +331,34 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 }
 
+func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
+	switch ty := ty.(type) {
+	case *types.Basic:
+		if ty.Kind() == types.String {
+			return C.Z3_mk_int2bv(ctx, strconv.IntSize, C.Z3_mk_seq_length(ctx, x))
+		}
+	}
+	log.Fatalf("z3MakeLen: invalid type: %T\n", ty)
+	panic("unimplemented")
+}
+
+func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
+	x := s.get(instr.X)
+	if x == nil {
+		return nil, fmt.Errorf("unop: operand is not registered: %v", instr)
+	}
+	switch instr.Op {
+	case token.SUB:
+		return C.Z3_mk_bvneg(s.ctx, x), nil
+	case token.NOT:
+		return C.Z3_mk_not(s.ctx, x), nil
+	case token.XOR:
+		//case token.MUL:
+		// case token.ARROW:
+	}
+	return nil, fmt.Errorf("binop: not implemented: %v", instr)
+}
+
 func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 	x := s.get(instr.X)
 	y := s.get(instr.Y)
@@ -362,17 +396,6 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 	default:
 		return nil, fmt.Errorf("binop: not implemented: %v", instr)
 	}
-}
-
-func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
-	switch ty := ty.(type) {
-	case *types.Basic:
-		if ty.Kind() == types.String {
-			return C.Z3_mk_int2bv(ctx, strconv.IntSize, C.Z3_mk_seq_length(ctx, x))
-		}
-	}
-	log.Fatalf("z3MakeLen: invalid type: %T\n", ty)
-	panic("unimplemented")
 }
 
 func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
