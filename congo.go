@@ -48,7 +48,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		// Interpret the program with the current symbol values.
 		result, err := prog.Run(values)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to run with symbol values %v", values)
+			log.Printf("panic occurred: %v", values)
 		}
 
 		// Update the covered blocks.
@@ -79,9 +79,9 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		z3Solver := solver.NewZ3Solver()
 		err = z3Solver.LoadSymbols(prog.symbols)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "failed to load symbols")
 		}
-		z3Solver.LoadTrace(result.Trace)
+		z3Solver.LoadTrace(result.Trace, result.ExitCode == 0)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
 		for j := z3Solver.NumBranches() - 1; j >= 0; j-- {
 			if branch, ok := z3Solver.Branch(j).(*solver.BranchIf); ok {

@@ -89,7 +89,7 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 }
 
 // LoadTrace loads a running trace to the solver.
-func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
+func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 	var currentBlock *ssa.BasicBlock
 	var prevBlock *ssa.BasicBlock
 	var callStack []*ssa.Call
@@ -167,6 +167,14 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction) {
 					Direction: thenBlock == nextBlock,
 				})
 			}
+		}
+	}
+	// Execution was stopped due to panic
+	if !complete {
+		causeInstr := trace[len(trace)-1]
+		switch instr := causeInstr.(type) {
+		case *ssa.UnOp:
+			fmt.Println("incomplete", instr)
 		}
 	}
 }
