@@ -67,6 +67,18 @@ func testExecute(testCases []executeTestCase, t *testing.T) {
 	}
 }
 
+func TestExecuteBool(t *testing.T) {
+	testCases := []executeTestCase{
+		{"github.com/ajalab/congo/testdata", "BoolNot", 2, 1},
+		{"github.com/ajalab/congo/testdata", "BoolAnd", 3, 1},
+		{"github.com/ajalab/congo/testdata", "BoolOr", 2, 1},
+		{"github.com/ajalab/congo/testdata", "BoolAll3", 4, 1},
+		{"github.com/ajalab/congo/testdata", "BoolAny3", 2, 1},
+		{"github.com/ajalab/congo/testdata", "Bool3", 3, 1},
+	}
+	testExecute(testCases, t)
+}
+
 func TestExecuteBranch(t *testing.T) {
 	testCases := []executeTestCase{
 		{"github.com/ajalab/congo/testdata", "BranchLessThan", 2, 1},
