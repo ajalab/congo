@@ -1,7 +1,6 @@
 package congo
 
 import (
-	"fmt"
 	"go/constant"
 	"go/token"
 	"log"
@@ -62,7 +61,7 @@ func (c *Config) Open() (*Program, error) {
 
 	if runnerPackage == nil || congoSymbolPackage == nil || targetPackage == nil {
 		// unreachable
-		return nil, fmt.Errorf("runner package or %s does not exist", packageCongoSymbolPath)
+		return nil, errors.Errorf("runner package or %s does not exist", packageCongoSymbolPath)
 	}
 
 	// Find references to congo.Symbol
@@ -82,21 +81,21 @@ func (c *Config) Open() (*Program, error) {
 			ty := assertInstr.AssertedType
 			unopInstr, ok := assertInstr.X.(*ssa.UnOp)
 			if !ok || unopInstr.Op != token.MUL {
-				return nil, fmt.Errorf("Illegal use of Symbol")
+				return nil, errors.Errorf("Illegal use of Symbol")
 			}
 			indexAddrInstr, ok := unopInstr.X.(*ssa.IndexAddr)
 			if !ok {
-				return nil, fmt.Errorf("Symbol must be used with the index operator")
+				return nil, errors.Errorf("Symbol must be used with the index operator")
 			}
 			index, ok := indexAddrInstr.Index.(*ssa.Const)
 			if !ok {
-				return nil, fmt.Errorf("Symbol must be indexed with a constant value")
+				return nil, errors.Errorf("Symbol must be indexed with a constant value")
 			}
 
 			i := index.Uint64()
 			if subst, ok := symbolSubstTable[i]; ok {
 				if subst.v.Type() != ty {
-					return nil, fmt.Errorf("Symbol[%d] is used as multiple types", i)
+					return nil, errors.Errorf("Symbol[%d] is used as multiple types", i)
 				}
 				indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(subst.i)), index.Type())
 			} else {

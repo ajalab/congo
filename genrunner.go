@@ -160,13 +160,13 @@ func getTargetFuncSig(packageName string, funcName string) (*types.Signature, er
 	pkg := loaderProg.Package(packageName).Pkg
 	function := pkg.Scope().Lookup(funcName)
 	if function == nil {
-		return nil, fmt.Errorf("function %s does not exist in package %s", funcName, packageName)
+		return nil, errors.Errorf("function %s does not exist in package %s", funcName, packageName)
 	}
 	funcType := function.Type()
 	sig, ok := funcType.(*types.Signature)
 	if !ok {
 		// unreachable
-		return nil, fmt.Errorf("%s is not a function", funcName)
+		return nil, errors.Errorf("%s is not a function", funcName)
 	}
 
 	return sig, nil

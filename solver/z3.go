@@ -74,11 +74,11 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 			case info&types.IsString > 0:
 				sort = C.Z3_mk_string_sort(s.ctx)
 			default:
-				return fmt.Errorf("unsupported basic type: %v", ty)
+				return errors.Errorf("unsupported basic type: %v", ty)
 			}
 			ast = C.Z3_mk_const(s.ctx, symbolID, sort)
 		default:
-			return fmt.Errorf("unsupported symbol type: %T", ty)
+			return errors.Errorf("unsupported symbol type: %T", ty)
 		}
 		if ast != nil {
 			s.asts[value] = ast
@@ -353,7 +353,7 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 	x := s.get(instr.X)
 	if x == nil {
-		return nil, fmt.Errorf("unop: operand is not registered: %v", instr)
+		return nil, errors.Errorf("unop: operand is not registered: %v", instr)
 	}
 	switch instr.Op {
 	case token.SUB:
@@ -364,7 +364,7 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		//case token.MUL:
 		// case token.ARROW:
 	}
-	return nil, fmt.Errorf("binop: not implemented: %v", instr)
+	return nil, errors.Errorf("binop: not implemented: %v", instr)
 }
 
 func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
@@ -372,10 +372,10 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 	y := s.get(instr.Y)
 	ty := instr.X.Type()
 	if x == nil {
-		return nil, fmt.Errorf("binop: left operand is not registered: %v", instr)
+		return nil, errors.Errorf("binop: left operand is not registered: %v", instr)
 	}
 	if y == nil {
-		return nil, fmt.Errorf("binop: right operand is not registered: %v", instr)
+		return nil, errors.Errorf("binop: right operand is not registered: %v", instr)
 	}
 	args := []C.Z3_ast{x, y}
 	switch instr.Op {
@@ -402,7 +402,7 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 	case token.LOR:
 		return C.Z3_mk_or(s.ctx, 2, &args[0]), nil
 	default:
-		return nil, fmt.Errorf("binop: not implemented: %v", instr)
+		return nil, errors.Errorf("binop: not implemented: %v", instr)
 	}
 }
 
@@ -478,7 +478,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	negBranch := s.branches[negate]
 	negCond := s.getBranchAST(negBranch, true)
 	if negCond == nil {
-		return nil, fmt.Errorf("corresponding AST for branching condition was not found: %+v", negBranch.Instr())
+		return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v", negBranch.Instr())
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
 	// fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
@@ -500,7 +500,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 		}
 		return values, nil
 	default:
-		return nil, fmt.Errorf("failed to solve: %s", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
+		return nil, errors.Errorf("failed to solve: %s", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 	}
 }
 
@@ -520,7 +520,7 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 		var ast C.Z3_ast
 		ok := C.Z3_model_eval(s.ctx, m, a, C.bool(true), &ast)
 		if !C.bool(ok) {
-			return nil, fmt.Errorf("failed to get symbol[%d] from the model", i)
+			return nil, errors.Errorf("failed to get symbol[%d] from the model", i)
 		}
 
 		v, err := s.astToValue(ast, s.symbols[idx].Type())
@@ -540,12 +540,12 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 	case C.Z3_NUMERAL_AST:
 		basicTy, ok := ty.(*types.Basic)
 		if !ok {
-			return nil, fmt.Errorf("illegal type")
+			return nil, errors.Errorf("illegal type")
 		}
 		var u C.uint64_t
 		ok = bool(C.Z3_get_numeral_uint64(s.ctx, ast, &u))
 		if !ok {
-			return nil, fmt.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
+			return nil, errors.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
 		}
 		switch basicTy.Kind() {
 		case types.Int:
@@ -572,7 +572,7 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 	case C.Z3_APP_AST:
 		basicTy, ok := ty.(*types.Basic)
 		if !ok {
-			return nil, fmt.Errorf("illegal type")
+			return nil, errors.Errorf("illegal type")
 		}
 		switch basicTy.Kind() {
 		case types.String:
@@ -583,9 +583,9 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 			return b == C.Z3_L_TRUE, nil
 		}
 
-		return nil, fmt.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
+		return nil, errors.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
 	}
-	return nil, fmt.Errorf("cannot convert Z3_AST (kind: %d) of type %s", kind, ty)
+	return nil, errors.Errorf("cannot convert Z3_AST (kind: %d) of type %s", kind, ty)
 }
 
 func sizeOfBasicKind(k types.BasicKind) uint {
