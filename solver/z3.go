@@ -77,6 +77,8 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 				return errors.Errorf("unsupported basic type: %v", ty)
 			}
 			ast = C.Z3_mk_const(s.ctx, symbolID, sort)
+		case *types.Pointer:
+			// TODO(ajalab)
 		default:
 			return errors.Errorf("unsupported symbol type: %T", ty)
 		}

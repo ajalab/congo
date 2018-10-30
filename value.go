@@ -139,6 +139,11 @@ func value2ASTExpr(v interface{}, ty types.Type) ast.Expr {
 		default:
 			panic("unimplemented")
 		}
+	case *types.Pointer:
+		if v.(*interface{}) == nil {
+			return ast.NewIdent("nil")
+		}
+		panic("unimplemented")
 	}
 	panic("unimplemented")
 }
