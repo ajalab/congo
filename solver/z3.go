@@ -364,7 +364,7 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		//case token.MUL:
 		// case token.ARROW:
 	}
-	return nil, errors.Errorf("binop: not implemented: %v", instr)
+	return nil, errors.Errorf("unop: not implemented: %v", instr)
 }
 
 func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
