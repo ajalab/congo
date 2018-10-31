@@ -55,33 +55,38 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
+func getSymbolAST(ctx C.Z3_context, id int, value ssa.Value) C.Z3_ast {
+	var ast C.Z3_ast
+	symbolID := C.Z3_mk_int_symbol(ctx, C.int(id))
+
+	switch ty := value.Type().(type) {
+	case *types.Basic:
+		info := ty.Info()
+		var sort C.Z3_sort
+		switch {
+		case info&types.IsBoolean > 0:
+			sort = C.Z3_mk_bool_sort(ctx)
+		case info&types.IsInteger > 0:
+			sort = C.Z3_mk_bv_sort(ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+		case info&types.IsString > 0:
+			sort = C.Z3_mk_string_sort(ctx)
+		default:
+			log.Fatalf("unsupported basic type: %v", ty)
+		}
+		ast = C.Z3_mk_const(ctx, symbolID, sort)
+	case *types.Pointer:
+		// TODO(ajalab)
+	default:
+		log.Fatalf("unsupported symbol type: %T", ty)
+	}
+	return ast
+}
+
 // LoadSymbols loads symbolic variables to the solver.
 func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 	s.symbols = make([]ssa.Value, len(symbols))
 	for i, value := range symbols {
-		var ast C.Z3_ast
-		symbolID := C.Z3_mk_int_symbol(s.ctx, C.int(i))
-
-		switch ty := value.Type().(type) {
-		case *types.Basic:
-			info := ty.Info()
-			var sort C.Z3_sort
-			switch {
-			case info&types.IsBoolean > 0:
-				sort = C.Z3_mk_bool_sort(s.ctx)
-			case info&types.IsInteger > 0:
-				sort = C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
-			case info&types.IsString > 0:
-				sort = C.Z3_mk_string_sort(s.ctx)
-			default:
-				return errors.Errorf("unsupported basic type: %v", ty)
-			}
-			ast = C.Z3_mk_const(s.ctx, symbolID, sort)
-		case *types.Pointer:
-			// TODO(ajalab)
-		default:
-			return errors.Errorf("unsupported symbol type: %T", ty)
-		}
+		ast := getSymbolAST(s.ctx, i, value)
 		if ast != nil {
 			s.asts[value] = ast
 		}
