@@ -16,9 +16,14 @@ import (
 	"go/types"
 	"log"
 	"strconv"
+	"unsafe"
 
 	"github.com/pkg/errors"
 	"golang.org/x/tools/go/ssa"
+)
+
+const (
+	z3SymbolPrefixForSymbol string = "symbol-"
 )
 
 // Z3Solver is a type that holds the Z3 context, assertions, and symbols.
@@ -57,7 +62,9 @@ func (s *Z3Solver) Close() {
 
 func getSymbolAST(ctx C.Z3_context, id int, value ssa.Value) C.Z3_ast {
 	var ast C.Z3_ast
-	symbolID := C.Z3_mk_int_symbol(ctx, C.int(id))
+	z3SymbolName := C.CString(fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, id))
+	z3Symbol := C.Z3_mk_string_symbol(ctx, z3SymbolName)
+	C.free(unsafe.Pointer(z3SymbolName))
 
 	switch ty := value.Type().(type) {
 	case *types.Basic:
@@ -73,7 +80,7 @@ func getSymbolAST(ctx C.Z3_context, id int, value ssa.Value) C.Z3_ast {
 		default:
 			log.Fatalf("unsupported basic type: %v", ty)
 		}
-		ast = C.Z3_mk_const(ctx, symbolID, sort)
+		ast = C.Z3_mk_const(ctx, z3Symbol, sort)
 	case *types.Pointer:
 		// TODO(ajalab)
 	default:
@@ -488,7 +495,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 		return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v", negBranch.Instr())
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
-	// fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
+	fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	result := C.Z3_solver_check(s.ctx, solver)
 
@@ -517,11 +524,17 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	n := int(C.Z3_model_get_num_consts(s.ctx, m))
 	for i := 0; i < n; i++ {
 		constDecl := C.Z3_model_get_const_decl(s.ctx, m, C.uint(i))
-		symbolID := C.Z3_get_decl_name(s.ctx, constDecl)
-		if k := C.Z3_get_symbol_kind(s.ctx, symbolID); k != C.Z3_INT_SYMBOL {
-			return nil, errors.New("Z3_symbol should be int value")
+		z3Symbol := C.Z3_get_decl_name(s.ctx, constDecl)
+		z3SymbolKind := C.Z3_get_symbol_kind(s.ctx, z3Symbol)
+		var idx int
+		if z3SymbolKind == C.Z3_INT_SYMBOL {
+			idx = int(C.Z3_get_symbol_int(s.ctx, z3Symbol))
+		} else {
+			z3SymbolName := C.GoString(C.Z3_get_symbol_string(s.ctx, z3Symbol))
+			if _, err := fmt.Sscanf(z3SymbolName, z3SymbolPrefixForSymbol+"%d", &idx); err != nil {
+				return nil, errors.Errorf("z3Symbol has an illegal format: %s", z3SymbolName)
+			}
 		}
-		idx := int(C.Z3_get_symbol_int(s.ctx, symbolID))
 
 		a := C.Z3_mk_app(s.ctx, constDecl, 0, nil)
 		var ast C.Z3_ast
