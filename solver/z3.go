@@ -61,7 +61,6 @@ func (s *Z3Solver) Close() {
 }
 
 func getSymbolAST(ctx C.Z3_context, z3SymbolName string, value ssa.Value) C.Z3_ast {
-	var ast C.Z3_ast
 	z3SymbolNameC := C.CString(z3SymbolName)
 	z3Symbol := C.Z3_mk_string_symbol(ctx, z3SymbolNameC)
 	C.free(unsafe.Pointer(z3SymbolNameC))
@@ -80,13 +79,14 @@ func getSymbolAST(ctx C.Z3_context, z3SymbolName string, value ssa.Value) C.Z3_a
 		default:
 			log.Fatalf("unsupported basic type: %v", ty)
 		}
-		ast = C.Z3_mk_const(ctx, z3Symbol, sort)
+		return C.Z3_mk_const(ctx, z3Symbol, sort)
 	case *types.Pointer:
 		// TODO(ajalab)
+		return nil
 	default:
 		log.Fatalf("unsupported symbol type: %T", ty)
+		panic("unimplemented")
 	}
-	return ast
 }
 
 // LoadSymbols loads symbolic variables to the solver.
