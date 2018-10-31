@@ -526,15 +526,10 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	for i := 0; i < n; i++ {
 		constDecl := C.Z3_model_get_const_decl(s.ctx, m, C.uint(i))
 		z3Symbol := C.Z3_get_decl_name(s.ctx, constDecl)
-		z3SymbolKind := C.Z3_get_symbol_kind(s.ctx, z3Symbol)
+		z3SymbolName := C.GoString(C.Z3_get_symbol_string(s.ctx, z3Symbol))
 		var idx int
-		if z3SymbolKind == C.Z3_INT_SYMBOL {
-			idx = int(C.Z3_get_symbol_int(s.ctx, z3Symbol))
-		} else {
-			z3SymbolName := C.GoString(C.Z3_get_symbol_string(s.ctx, z3Symbol))
-			if _, err := fmt.Sscanf(z3SymbolName, z3SymbolPrefixForSymbol+"%d", &idx); err != nil {
-				return nil, errors.Errorf("z3Symbol has an illegal format: %s", z3SymbolName)
-			}
+		if _, err := fmt.Sscanf(z3SymbolName, z3SymbolPrefixForSymbol+"%d", &idx); err != nil {
+			return nil, errors.Errorf("z3Symbol has an illegal format: %s", z3SymbolName)
 		}
 
 		a := C.Z3_mk_app(s.ctx, constDecl, 0, nil)
