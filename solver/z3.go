@@ -60,11 +60,11 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-func getSymbolAST(ctx C.Z3_context, id int, value ssa.Value) C.Z3_ast {
+func getSymbolAST(ctx C.Z3_context, z3SymbolName string, value ssa.Value) C.Z3_ast {
 	var ast C.Z3_ast
-	z3SymbolName := C.CString(fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, id))
-	z3Symbol := C.Z3_mk_string_symbol(ctx, z3SymbolName)
-	C.free(unsafe.Pointer(z3SymbolName))
+	z3SymbolNameC := C.CString(z3SymbolName)
+	z3Symbol := C.Z3_mk_string_symbol(ctx, z3SymbolNameC)
+	C.free(unsafe.Pointer(z3SymbolNameC))
 
 	switch ty := value.Type().(type) {
 	case *types.Basic:
@@ -93,7 +93,8 @@ func getSymbolAST(ctx C.Z3_context, id int, value ssa.Value) C.Z3_ast {
 func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 	s.symbols = make([]ssa.Value, len(symbols))
 	for i, value := range symbols {
-		ast := getSymbolAST(s.ctx, i, value)
+		z3SymbolName := fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, i)
+		ast := getSymbolAST(s.ctx, z3SymbolName, value)
 		if ast != nil {
 			s.asts[value] = ast
 		}
