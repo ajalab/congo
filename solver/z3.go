@@ -114,6 +114,13 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 	var currentBlock *ssa.BasicBlock
 	var prevBlock *ssa.BasicBlock
 	var callStack []*ssa.Call
+
+	// If the trace is not complete, ignore the last instruction,
+	// which is a cause of failure.
+	if !complete {
+		trace = trace[:len(trace)-1]
+	}
+
 	for i, instr := range trace {
 		block := instr.Block()
 		if currentBlock != block {
@@ -154,7 +161,6 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 						s.asts[fn.Params[j]] = s.get(arg)
 					}
 					callStack = append(callStack, instr)
-				} else {
 				}
 			case *ssa.Builtin:
 				switch fn.Name() {
