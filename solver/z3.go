@@ -60,62 +60,37 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-func getSymbolAST(ctx C.Z3_context, z3SymbolName string, ty types.Type) C.Z3_ast {
-	z3SymbolNameC := C.CString(z3SymbolName)
-	z3Symbol := C.Z3_mk_string_symbol(ctx, z3SymbolNameC)
-	C.free(unsafe.Pointer(z3SymbolNameC))
-
+func (s *Z3Solver) getSort(ty types.Type) C.Z3_sort {
 	switch ty := ty.(type) {
 	case *types.Basic:
 		info := ty.Info()
-		var sort C.Z3_sort
 		switch {
 		case info&types.IsBoolean > 0:
-			sort = C.Z3_mk_bool_sort(ctx)
+			return C.Z3_mk_bool_sort(s.ctx)
 		case info&types.IsInteger > 0:
-			sort = C.Z3_mk_bv_sort(ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+			return C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
 		case info&types.IsString > 0:
-			sort = C.Z3_mk_string_sort(ctx)
+			return C.Z3_mk_string_sort(s.ctx)
 		default:
 			log.Fatalf("unsupported basic type: %v", ty)
+			panic("unimplemented")
 		}
-		return C.Z3_mk_const(ctx, z3Symbol, sort)
 	case *types.Pointer:
 		// TODO(ajalab)
-		// Variables named z3* may be GCed by Go so we have to store them.
-		// We also have to delete constructors after we use them.
-
-		astVal := getSymbolAST(ctx, "p-"+z3SymbolName, ty.Elem())
-		// datatype pointer a = nil | val a
-		z3NilSymbolName := C.CString("nil")
-		z3NilRecogSymbolName := C.CString("is-nil")
-		z3NilSymbol := C.Z3_mk_string_symbol(ctx, z3NilSymbolName)
-		z3NilRecogSymbol := C.Z3_mk_string_symbol(ctx, z3NilRecogSymbolName)
-		z3NilCons := C.Z3_mk_constructor(ctx, z3NilSymbol, z3NilRecogSymbol, 0, nil, nil, nil)
-		z3ValSymbolName := C.CString("val")
-		z3ValRecogSymbolName := C.CString("is-val")
-
-		z3ValSymbol := C.Z3_mk_string_symbol(ctx, z3ValSymbolName)
-		z3ValRecogSymbol := C.Z3_mk_string_symbol(ctx, z3ValRecogSymbolName)
-		z3ValFieldSymbol := C.Z3_mk_int_symbol(ctx, 0)
-		z3ValSort := C.Z3_get_sort(ctx, astVal)
-		z3ValSortRef := C.uint(0)
-		z3ValCons := C.Z3_mk_constructor(ctx, z3ValSymbol, z3ValRecogSymbol, 1, &z3ValFieldSymbol, &z3ValSort, &z3ValSortRef)
-		z3Constructors := [...]C.Z3_constructor{z3NilCons, z3ValCons}
-		z3DatatypeSymbolName := C.CString("dt-" + z3SymbolName)
-		z3DatatypeSymbol := C.Z3_mk_string_symbol(ctx, z3DatatypeSymbolName)
-		_ = C.Z3_mk_datatype(ctx, z3DatatypeSymbol, 2, &z3Constructors[0])
-
-		C.free(unsafe.Pointer(z3NilSymbolName))
-		C.free(unsafe.Pointer(z3NilRecogSymbolName))
-		C.free(unsafe.Pointer(z3ValSymbolName))
-		C.free(unsafe.Pointer(z3ValRecogSymbolName))
-		C.free(unsafe.Pointer(z3DatatypeSymbolName))
 		return nil
 	default:
-		log.Fatalf("unsupported symbol type: %T", ty)
+		log.Fatalf("unsupported type: %v", ty)
 		panic("unimplemented")
 	}
+}
+
+func (s *Z3Solver) getSymbolAST(z3SymbolName string, ty types.Type) C.Z3_ast {
+	z3SymbolNameC := C.CString(z3SymbolName)
+	z3Symbol := C.Z3_mk_string_symbol(s.ctx, z3SymbolNameC)
+	C.free(unsafe.Pointer(z3SymbolNameC))
+
+	sort := s.getSort(ty)
+	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
 }
 
 // LoadSymbols loads symbolic variables to the solver.
@@ -123,7 +98,7 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 	s.symbols = make([]ssa.Value, len(symbols))
 	for i, value := range symbols {
 		z3SymbolName := fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, i)
-		ast := getSymbolAST(s.ctx, z3SymbolName, value.Type())
+		ast := s.getSymbolAST(z3SymbolName, value.Type())
 		if ast != nil {
 			s.asts[value] = ast
 		}
