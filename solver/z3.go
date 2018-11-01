@@ -568,7 +568,7 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 			return nil, errors.Errorf("failed to get symbol[%d] from the model", i)
 		}
 
-		v, err := s.astToValue(ast, s.symbols[idx].Type())
+		v, err := s.astToValue(m, ast, s.symbols[idx].Type())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
 		}
@@ -579,7 +579,7 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	return values, nil
 }
 
-func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) {
+func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interface{}, error) {
 	kind := C.Z3_get_ast_kind(s.ctx, ast)
 	switch kind {
 	case C.Z3_NUMERAL_AST:
@@ -615,19 +615,39 @@ func (s *Z3Solver) astToValue(ast C.Z3_ast, ty types.Type) (interface{}, error) 
 			return uint64(u), nil
 		}
 	case C.Z3_APP_AST:
-		basicTy, ok := ty.(*types.Basic)
-		if !ok {
-			return nil, errors.Errorf("illegal type")
-		}
-		switch basicTy.Kind() {
-		case types.String:
-			s, _ := strconv.Unquote(fmt.Sprintf(`"%s"`, C.GoString(C.Z3_get_string(s.ctx, ast))))
-			return s, nil
-		case types.Bool:
-			b := C.Z3_get_bool_value(s.ctx, ast)
-			return b == C.Z3_L_TRUE, nil
-		}
+		switch ty := ty.(type) {
+		case *types.Basic:
+			switch ty.Kind() {
+			case types.String:
+				s, _ := strconv.Unquote(fmt.Sprintf(`"%s"`, C.GoString(C.Z3_get_string(s.ctx, ast))))
+				return s, nil
+			case types.Bool:
+				b := C.Z3_get_bool_value(s.ctx, ast)
+				return b == C.Z3_L_TRUE, nil
+			}
+		case *types.Pointer:
+			pointerDT := s.datatypes[ty.String()].(*z3PointerDatatype)
+			isNilQuery := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &ast)
+			var isNilResAST C.Z3_ast
+			ok := C.Z3_model_eval(s.ctx, m, isNilQuery, C.bool(true), &isNilResAST)
+			if !C.bool(ok) {
+				return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, isNilQuery)))
+			}
+			isNil := C.Z3_get_bool_value(s.ctx, isNilResAST) == C.Z3_L_TRUE
+			if isNil {
+				return nil, nil
+			}
 
+			// the pointer points to another value
+			accQuery := C.Z3_mk_app(s.ctx, pointerDT.valAcc, 1, &ast)
+			var accResAST C.Z3_ast
+			ok = C.Z3_model_eval(s.ctx, m, accQuery, C.bool(true), &accResAST)
+			if !C.bool(ok) {
+				return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, accQuery)))
+			}
+			v, err := s.astToValue(m, accResAST, ty.Elem())
+			return &v, err
+		}
 		return nil, errors.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
 	}
 	return nil, errors.Errorf("cannot convert Z3_AST (kind: %d) of type %s", kind, ty)
