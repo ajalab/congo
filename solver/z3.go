@@ -117,11 +117,12 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 
 	// If the trace is not complete, ignore the last instruction,
 	// which is a cause of failure.
+	var validTrace = trace
 	if !complete {
-		trace = trace[:len(trace)-1]
+		validTrace = trace[:len(trace)-1]
 	}
 
-	for i, instr := range trace {
+	for i, instr := range validTrace {
 		block := instr.Block()
 		if currentBlock != block {
 			prevBlock = currentBlock
