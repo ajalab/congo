@@ -33,7 +33,7 @@ type Z3Solver struct {
 
 	branches  []Branch
 	symbols   []ssa.Value
-	datatypes map[types.Type]z3Datatype
+	datatypes map[string]z3Datatype
 }
 
 //export goZ3ErrorHandler
@@ -51,8 +51,9 @@ func NewZ3Solver() *Z3Solver {
 	ctx := C.Z3_mk_context(cfg)
 	C.Z3_set_error_handler(ctx, (*C.Z3_error_handler)(C.goZ3ErrorHandler))
 	return &Z3Solver{
-		asts: make(map[ssa.Value]C.Z3_ast),
-		ctx:  ctx,
+		asts:      make(map[ssa.Value]C.Z3_ast),
+		ctx:       ctx,
+		datatypes: make(map[string]z3Datatype),
 	}
 }
 
@@ -83,7 +84,7 @@ func (s *Z3Solver) getSymbolAST(z3SymbolName string, ty types.Type) C.Z3_ast {
 		valSort := C.Z3_get_sort(s.ctx, valAST)
 		datatypeName := fmt.Sprintf("dt-%d", len(s.datatypes))
 		datatype := newPointerSort(s.ctx, valSort, datatypeName)
-		s.datatypes[ty] = datatype
+		s.datatypes[ty.String()] = datatype
 		sort = datatype.sort
 	}
 
@@ -194,7 +195,9 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 		causeInstr := trace[len(trace)-1]
 		switch instr := causeInstr.(type) {
 		case *ssa.UnOp:
-			fmt.Println("incomplete", instr)
+			s.branches = append(s.branches, &PanicNilPointerDeref{
+				instr: instr,
+			})
 		}
 	}
 }
@@ -477,6 +480,19 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) C.Z3_ast {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
 		return cond
+	case *PanicNilPointerDeref:
+		pointer := b.instr.X
+		pointerAST := s.get(pointer)
+		if pointerAST == nil {
+			log.Printf("corresponding AST for branching condition was not found: %+v", branch.Instr())
+			return nil
+		}
+		pointerDT := s.datatypes[pointer.Type().String()].(*z3PointerDatatype)
+		cond := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &pointerAST)
+		if negate {
+			cond = C.Z3_mk_not(s.ctx, cond)
+		}
+		return cond
 	default:
 		panic("unimplemented")
 	}
@@ -514,6 +530,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 			C.Z3_model_inc_ref(s.ctx, m)
 			defer C.Z3_model_dec_ref(s.ctx, m)
 		}
+		fmt.Println(C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		values, err := s.getSymbolValues(m)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(s.ctx, m)))

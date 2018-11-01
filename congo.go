@@ -73,6 +73,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		coverage = float64(len(covered)) / float64(len(prog.targetFunc.Blocks))
 		log.Println("coverage", coverage)
 		if coverage >= minCoverage || i == maxExec-1 {
+			log.Println("stop")
 			break
 		}
 
@@ -84,7 +85,9 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		z3Solver.LoadTrace(result.Trace, result.ExitCode == 0)
 		queue, queueAfter := make([]int, 0), make([]int, 0)
 		for j := z3Solver.NumBranches() - 1; j >= 0; j-- {
-			if branch, ok := z3Solver.Branch(j).(*solver.BranchIf); ok {
+			branch := z3Solver.Branch(j)
+			switch branch := branch.(type) {
+			case *solver.BranchIf:
 				succs := branch.Succs()
 				b := succs[0]
 				if branch.Direction {
@@ -95,6 +98,8 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				} else {
 					queueAfter = append(queueAfter, j)
 				}
+			case *solver.PanicNilPointerDeref:
+				queue = append(queue, j)
 			}
 		}
 		queue = append(queue, queueAfter...)
