@@ -31,8 +31,9 @@ type Z3Solver struct {
 	asts map[ssa.Value]C.Z3_ast
 	ctx  C.Z3_context
 
-	branches []Branch
-	symbols  []ssa.Value
+	branches  []Branch
+	symbols   []ssa.Value
+	datatypes map[types.Type]z3Datatype
 }
 
 //export goZ3ErrorHandler
@@ -60,36 +61,36 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-func (s *Z3Solver) getSort(ty types.Type) C.Z3_sort {
-	switch ty := ty.(type) {
-	case *types.Basic:
-		info := ty.Info()
-		switch {
-		case info&types.IsBoolean > 0:
-			return C.Z3_mk_bool_sort(s.ctx)
-		case info&types.IsInteger > 0:
-			return C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
-		case info&types.IsString > 0:
-			return C.Z3_mk_string_sort(s.ctx)
-		default:
-			log.Fatalf("unsupported basic type: %v", ty)
-			panic("unimplemented")
-		}
-	case *types.Pointer:
-		// TODO(ajalab)
-		return nil
-	default:
-		log.Fatalf("unsupported type: %v", ty)
-		panic("unimplemented")
-	}
-}
-
 func (s *Z3Solver) getSymbolAST(z3SymbolName string, ty types.Type) C.Z3_ast {
 	z3SymbolNameC := C.CString(z3SymbolName)
 	z3Symbol := C.Z3_mk_string_symbol(s.ctx, z3SymbolNameC)
 	C.free(unsafe.Pointer(z3SymbolNameC))
 
-	sort := s.getSort(ty)
+	var sort C.Z3_sort
+	switch ty := ty.(type) {
+	case *types.Basic:
+		info := ty.Info()
+		switch {
+		case info&types.IsBoolean > 0:
+			sort = C.Z3_mk_bool_sort(s.ctx)
+		case info&types.IsInteger > 0:
+			sort = C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+		case info&types.IsString > 0:
+			sort = C.Z3_mk_string_sort(s.ctx)
+		}
+	case *types.Pointer:
+		valAST := s.getSymbolAST("p-"+z3SymbolName, ty.Elem())
+		valSort := C.Z3_get_sort(s.ctx, valAST)
+		datatypeName := fmt.Sprintf("dt-%d", len(s.datatypes))
+		datatype := newPointerSort(s.ctx, valSort, datatypeName)
+		s.datatypes[ty] = datatype
+		sort = datatype.sort
+	}
+
+	if sort == nil {
+		log.Fatalf("unsupported type: %v", ty)
+		panic("unimplemented")
+	}
 	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
 }
 
