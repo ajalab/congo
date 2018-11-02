@@ -117,12 +117,12 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 
 	// If the trace is not complete, ignore the last instruction,
 	// which is a cause of failure.
-	var validTrace = trace
+	var traceOrig = trace
 	if !complete {
-		validTrace = trace[:len(trace)-1]
+		trace = trace[:len(trace)-1]
 	}
 
-	for i, instr := range validTrace {
+	for i, instr := range trace {
 		block := instr.Block()
 		if currentBlock != block {
 			prevBlock = currentBlock
@@ -175,16 +175,20 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 				panic("unimplemented")
 			}
 		case *ssa.Return:
-			callInstr := callStack[len(callStack)-1]
-			// TODO(ajalab) Support multiple return values
-			switch len(instr.Results) {
-			case 0:
-			case 1:
-				s.asts[callInstr] = s.get(instr.Results[0])
-			default:
-				log.Fatalln("multiple return values are not supported")
+			// len(callStack) becomes 0 when instr.Parent() is init() or main() of
+			// the runner package.
+			if len(callStack) > 0 {
+				callInstr := callStack[len(callStack)-1]
+				// TODO(ajalab) Support multiple return values
+				switch len(instr.Results) {
+				case 0:
+				case 1:
+					s.asts[callInstr] = s.get(instr.Results[0])
+				default:
+					log.Fatalln("multiple return values are not supported")
+				}
+				callStack = callStack[:len(callStack)-1]
 			}
-			callStack = callStack[:len(callStack)-1]
 		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
 			if s.get(ifInstr.Cond) != nil {
@@ -199,7 +203,7 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 	}
 	// Execution was stopped due to panic
 	if !complete {
-		causeInstr := trace[len(trace)-1]
+		causeInstr := traceOrig[len(traceOrig)-1]
 		switch instr := causeInstr.(type) {
 		case *ssa.UnOp:
 			s.branches = append(s.branches, &PanicNilPointerDeref{
