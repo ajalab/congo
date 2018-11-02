@@ -399,8 +399,16 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		return C.Z3_mk_bvneg(s.ctx, x), nil
 	case token.NOT:
 		return C.Z3_mk_not(s.ctx, x), nil
-	case token.XOR:
-		//case token.MUL:
+	case token.MUL:
+		pointer := instr.X
+		pointerAST := s.get(pointer)
+		if pointerAST == nil {
+			return nil, errors.Errorf("corresponding AST for pointer was not found: %v", pointer)
+		}
+		pointerDT := s.datatypes[pointer.Type().String()].(*z3PointerDatatype)
+		acc := C.Z3_mk_app(s.ctx, pointerDT.valAcc, 1, &pointerAST)
+		return acc, nil
+		// case token.XOR:
 		// case token.ARROW:
 	}
 	return nil, errors.Errorf("unop: not implemented: %v", instr)
