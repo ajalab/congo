@@ -1,6 +1,7 @@
 package congo
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -47,23 +48,25 @@ type executeTestCase struct {
 
 func testExecute(testCases []executeTestCase, t *testing.T) {
 	for _, tc := range testCases {
-		conf := Config{
-			PackageName: tc.packageName,
-			FuncName:    tc.funcName,
-		}
+		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
+			conf := Config{
+				PackageName: tc.packageName,
+				FuncName:    tc.funcName,
+			}
 
-		prog, err := conf.Open()
-		if err != nil {
-			t.Fatalf("Config.Open: %v\n", err)
-		}
+			prog, err := conf.Open()
+			if err != nil {
+				t.Fatalf("Config.Open: %v\n", err)
+			}
 
-		res, err := prog.Execute(tc.maxExec, tc.minCoverage)
-		if err != nil {
-			t.Fatalf("Program.Execute: %v\n", err)
-		}
-		if res.Coverage < tc.minCoverage {
-			t.Fatalf("%+v\ncoverage could not be accomplished: expected %f, actual %f\n", tc, tc.minCoverage, res.Coverage)
-		}
+			res, err := prog.Execute(tc.maxExec, tc.minCoverage)
+			if err != nil {
+				t.Fatalf("Program.Execute: %v\n", err)
+			}
+			if res.Coverage < tc.minCoverage {
+				t.Fatalf("%+v\ncoverage could not be accomplished: expected %f, actual %f\n", tc, tc.minCoverage, res.Coverage)
+			}
+		})
 	}
 }
 
