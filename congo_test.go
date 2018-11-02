@@ -134,3 +134,11 @@ func TestExecuteCall(t *testing.T) {
 	}
 	testExecute(testCases, t)
 }
+
+func TestExecutePointer(t *testing.T) {
+	testCases := []executeTestCase{
+		{"github.com/ajalab/congo/testdata", "PointerDeref", 3, 1},
+		{"github.com/ajalab/congo/testdata", "PointerDeref2", 3, 1},
+	}
+	testExecute(testCases, t)
+}

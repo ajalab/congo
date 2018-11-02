@@ -20,6 +20,15 @@ func PointerDeref(a *int) {
 	}
 }
 
+// PointerDeref2 is a test case to check pointer indirection.
+func PointerDeref2(a *int) {
+	if 0 < *a && *a < 5 {
+		fmt.Println("0 < *a < 5")
+	} else {
+		fmt.Println("not 0 < *a < 5")
+	}
+}
+
 // PointerDoubleDeref is a test case to check nested pointer indirection.
 func PointerDoubleDeref(a **int) {
 	if **a < 5 {
