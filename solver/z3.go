@@ -117,16 +117,18 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 
 	// If the trace is not complete, ignore the last instruction,
 	// which is a cause of failure.
-	var traceOrig = trace
+	n := len(trace)
 	if !complete {
-		trace = trace[:len(trace)-1]
+		n = n - 1
 	}
 
-	for i, instr := range trace {
+	for i := 0; i < n; i++ {
+		instr := trace[i]
 		block := instr.Block()
 		if currentBlock != block {
 			prevBlock = currentBlock
 			currentBlock = block
+			log.Printf("block: %v.%s", block.Parent(), block)
 		}
 
 		switch instr := instr.(type) {
@@ -159,9 +161,12 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 				// Is the called function recorded?
 				if i < len(trace)-1 && trace[i+1].Parent() == fn {
 					for j, arg := range instr.Call.Args {
+						log.Printf("call %v param%d %v <- %v", fn, j, fn.Params[j], arg)
 						s.asts[fn.Params[j]] = s.get(arg)
 					}
 					callStack = append(callStack, instr)
+				} else {
+					log.Printf("ignored function call %v (trace[i + 1]) = %v", instr, trace[i+1])
 				}
 			case *ssa.Builtin:
 				switch fn.Name() {
@@ -203,7 +208,7 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 	}
 	// Execution was stopped due to panic
 	if !complete {
-		causeInstr := traceOrig[len(traceOrig)-1]
+		causeInstr := trace[len(trace)-1]
 		switch instr := causeInstr.(type) {
 		case *ssa.UnOp:
 			s.branches = append(s.branches, &PanicNilPointerDeref{
