@@ -479,31 +479,29 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (s *Z3Solver) getBranchAST(branch Branch, negate bool) C.Z3_ast {
+func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 	switch b := branch.(type) {
 	case *BranchIf:
 		cond := s.get(b.instr.Cond)
 		if cond == nil {
-			log.Printf("corresponding AST for branching condition was not found: %+v", branch.Instr())
-			return nil
+			return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v", branch.Instr())
 		}
 		if (!negate && !b.Direction) || (negate && b.Direction) {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
-		return cond
+		return cond, nil
 	case *PanicNilPointerDeref:
 		pointer := b.instr.X
 		pointerAST := s.get(pointer)
 		if pointerAST == nil {
-			log.Printf("corresponding AST for branching condition was not found: %+v", branch.Instr())
-			return nil
+			return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", pointer)
 		}
 		pointerDT := s.datatypes[pointer.Type().String()].(*z3PointerDatatype)
 		cond := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &pointerAST)
 		if negate {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
-		return cond
+		return cond, nil
 	default:
 		panic("unimplemented")
 	}
@@ -518,14 +516,17 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	defer C.Z3_solver_dec_ref(s.ctx, solver)
 	for i := 0; i < negate; i++ {
 		branch := s.branches[i]
-		cond := s.getBranchAST(branch, false)
+		cond, err := s.getBranchAST(branch, false)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to solve constraints")
+		}
 		C.Z3_solver_assert(s.ctx, solver, cond)
 	}
 
 	negBranch := s.branches[negate]
-	negCond := s.getBranchAST(negBranch, true)
-	if negCond == nil {
-		return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v", negBranch.Instr())
+	negCond, err := s.getBranchAST(negBranch, true)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to solve constraints")
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
 	fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
