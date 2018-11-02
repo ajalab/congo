@@ -32,7 +32,8 @@ func value2InterpValue(v interface{}, t types.Type) value {
 		if a == nil {
 			return (*value)(nil)
 		}
-		return &*a
+		val := value2InterpValue(*a, t.Elem())
+		return &val
 	}
 	return nil
 }
