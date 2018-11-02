@@ -45,7 +45,11 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 
 		func %s(%s *testing.T) {
 			congoTestCases := []struct{}{}
-			for _, tc := range congoTestCases {}
+			for i, tc := range congoTestCases {
+				t.Run(fmt.Sprintf("test%%d", i), func () {
+
+				})
+			}
 		}
 	`, r.targetPackage.Name()+"_test", testFuncName, testingT)
 
@@ -55,6 +59,7 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate AST for test module")
 	}
+	astutil.AddImport(fset, f, "fmt")
 	astutil.AddImport(fset, f, "testing")
 	astutil.AddImport(fset, f, r.targetPackage.Path())
 
@@ -105,7 +110,9 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 		testCasesExpr.Elts = append(testCasesExpr.Elts, tc)
 	}
 	testRangeStmtBody := testFuncDecl.Body.List[1].(*ast.RangeStmt).Body
-	testRangeStmtBody.List = runnerFunc.Body.List
+	testRunCallExpr := testRangeStmtBody.List[0].(*ast.ExprStmt).X.(*ast.CallExpr)
+	testRunFuncExpr := testRunCallExpr.Args[1].(*ast.FuncLit)
+	testRunFuncExpr.Body.List = runnerFunc.Body.List
 
 	return f, nil
 }
