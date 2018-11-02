@@ -140,8 +140,17 @@ func value2ASTExpr(v interface{}, ty types.Type) ast.Expr {
 			panic("unimplemented")
 		}
 	case *types.Pointer:
-		if v.(*interface{}) == nil {
+		p := v.(*interface{})
+		if p == nil {
 			return ast.NewIdent("nil")
+		}
+		if basicTy, ok := ty.Elem().(*types.Basic); ok {
+			return &ast.CallExpr{
+				Fun: ast.NewIdent(basicTy.Name() + "ptr"),
+				Args: []ast.Expr{
+					value2ASTExpr(*p, ty.Elem()),
+				},
+			}
 		}
 		panic("unimplemented")
 	}

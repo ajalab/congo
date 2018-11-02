@@ -113,8 +113,79 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 	testRunCallExpr := testRangeStmtBody.List[0].(*ast.ExprStmt).X.(*ast.CallExpr)
 	testRunFuncExpr := testRunCallExpr.Args[1].(*ast.FuncLit)
 	testRunFuncExpr.Body.List = runnerFunc.Body.List
+	r.insertAuxiliaryFuncs(f)
 
 	return f, nil
+}
+
+func (r *ExecuteResult) insertAuxiliaryFuncs(f *ast.File) {
+	insertFuncs := make(map[string]*ast.FuncDecl)
+
+	for i, ty := range r.SymbolTypes {
+		pointerTy, ok := ty.(*types.Pointer)
+		if !ok {
+			continue
+		}
+		elemTy, ok := pointerTy.Elem().(*types.Basic)
+		if !ok {
+			continue
+		}
+		name := elemTy.Name() + "ptr"
+		if _, ok := insertFuncs[name]; ok {
+			continue
+		}
+		for _, v := range r.SymbolValues[i] {
+			if v != nil {
+				insertFuncs[name] = getAuxiliaryPtrFunc(name, elemTy)
+				break
+			}
+		}
+	}
+
+	insertPos := len(f.Decls)
+	for i, decl := range f.Decls {
+		if _, ok := decl.(*ast.FuncDecl); ok {
+			insertPos = i
+			break
+		}
+	}
+
+	newDecls := []ast.Decl{}
+	for _, decl := range insertFuncs {
+		newDecls = append(newDecls, decl)
+	}
+	f.Decls = append(f.Decls[:insertPos], append(newDecls, f.Decls[insertPos:]...)...)
+}
+
+func getAuxiliaryPtrFunc(name string, ty *types.Basic) *ast.FuncDecl {
+	return &ast.FuncDecl{
+		Name: ast.NewIdent(name),
+		Type: &ast.FuncType{
+			Params: &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Names: []*ast.Ident{ast.NewIdent("x")},
+						Type:  ast.NewIdent(ty.Name()),
+					},
+				},
+			},
+			Results: &ast.FieldList{
+				List: []*ast.Field{&ast.Field{Type: &ast.StarExpr{X: ast.NewIdent(ty.Name())}}},
+			},
+		},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{
+						&ast.UnaryExpr{
+							Op: token.AND,
+							X:  ast.NewIdent("x"),
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []string, error) {
