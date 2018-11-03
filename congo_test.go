@@ -17,20 +17,22 @@ func TestRun(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		prog, err := Load(tc.packageName, tc.funcName)
-		if err != nil {
-			t.Fatalf("Config.Open: %v", err)
-		}
+		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
+			prog, err := Load(tc.packageName, tc.funcName)
+			if err != nil {
+				t.Fatalf("Config.Open: %v", err)
+			}
 
-		n := len(prog.symbols)
-		values := make([]interface{}, n)
-		for i, symbol := range prog.symbols {
-			values[i] = zero(symbol.Type())
-		}
+			n := len(prog.symbols)
+			values := make([]interface{}, n)
+			for i, symbol := range prog.symbols {
+				values[i] = zero(symbol.Type())
+			}
 
-		if _, err = prog.Run(values); err != nil {
-			t.Errorf("prog.Run: %v", err)
-		}
+			if _, err = prog.Run(values); err != nil {
+				t.Errorf("prog.Run: %v", err)
+			}
+		})
 	}
 }
 
