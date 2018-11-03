@@ -45,7 +45,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	prog, err := congo.Load(flag.NArg(0), *funcName)
+	prog, err := congo.Load(flag.Arg(0), *funcName)
 	if err != nil {
 		log.Fatalf("Config.Open: %v", err)
 	}
