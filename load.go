@@ -12,12 +12,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Config is a type for loading the target program for Congo.
-type Config struct {
-	PackageName string
-	FuncName    string
-}
-
 func init() {
 	log.SetFlags(log.Llongfile)
 }
@@ -25,9 +19,9 @@ func init() {
 const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
 const packageRunnerPath = "congomain"
 
-// Open opens the target program
-func (c *Config) Open() (*Program, error) {
-	runnerFile, err := generateRunner(c.PackageName, c.FuncName)
+// Load loads the target program
+func Load(packageName string, funcName string) (*Program, error) {
+	runnerFile, err := generateRunner(packageName, funcName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}
@@ -54,7 +48,7 @@ func (c *Config) Open() (*Program, error) {
 			runnerPackage = ssaProg.Package(info.Pkg)
 		case packageCongoSymbolPath:
 			congoSymbolPackage = ssaProg.Package(info.Pkg)
-		case c.PackageName:
+		case packageName:
 			targetPackage = ssaProg.Package(info.Pkg)
 		}
 	}
@@ -118,7 +112,7 @@ func (c *Config) Open() (*Program, error) {
 		runnerPackage:      runnerPackage,
 		targetPackage:      targetPackage,
 		congoSymbolPackage: congoSymbolPackage,
-		targetFunc:         targetPackage.Func(c.FuncName),
+		targetFunc:         targetPackage.Func(funcName),
 		symbols:            symbols,
 	}, nil
 }

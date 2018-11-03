@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"runtime/pprof"
@@ -18,18 +19,21 @@ var (
 	maxExec     = flag.Uint("maxexec", 10, "maximum execution time")
 	o           = flag.String("o", "", "destination path for generated test code")
 	verbose     = flag.Bool("v", false, "verbose output (debug info)")
+	funcName    = flag.String("f", "", "name of the target function")
 )
 
 func main() {
 	flag.Parse()
 
-	var packageName, funcName string
-	if flag.NArg() < 2 {
-		packageName = "github.com/ajalab/congo/testdata"
-		funcName = "Factor5040"
-	} else {
-		packageName = flag.Arg(0)
-		funcName = flag.Arg(1)
+	if flag.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "package must be specified after flags")
+		flag.Usage()
+		return
+	}
+	if *funcName == "" {
+		fmt.Fprintln(os.Stderr, "function name must be specified by -f option")
+		flag.Usage()
+		return
 	}
 
 	if *cpuProfile != "" {
@@ -41,12 +45,7 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	conf := congo.Config{
-		PackageName: packageName,
-		FuncName:    funcName,
-	}
-
-	prog, err := conf.Open()
+	prog, err := congo.Load(flag.NArg(0), *funcName)
 	if err != nil {
 		log.Fatalf("Config.Open: %v", err)
 	}
