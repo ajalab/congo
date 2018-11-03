@@ -17,12 +17,7 @@ func TestRun(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		conf := Config{
-			PackageName: tc.packageName,
-			FuncName:    tc.funcName,
-		}
-
-		prog, err := conf.Open()
+		prog, err := Load(tc.packageName, tc.funcName)
 		if err != nil {
 			t.Fatalf("Config.Open: %v", err)
 		}
@@ -49,12 +44,7 @@ type executeTestCase struct {
 func testExecute(testCases []executeTestCase, t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			conf := Config{
-				PackageName: tc.packageName,
-				FuncName:    tc.funcName,
-			}
-
-			prog, err := conf.Open()
+			prog, err := Load(tc.packageName, tc.funcName)
 			if err != nil {
 				t.Fatalf("Config.Open: %v\n", err)
 			}
