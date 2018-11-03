@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"golang.org/x/tools/go/loader"
+	"golang.org/x/tools/go/packages"
 )
 
 func generateRunner(packageName, funcName string) (*ast.File, error) {
@@ -146,24 +146,19 @@ func generateRunner(packageName, funcName string) (*ast.File, error) {
 }
 
 func getTargetFuncSig(packageName string, funcName string) (*types.Signature, error) {
-	// TODO(ajalab):
-	// We only need to load the target package but not its dependencies.
-	loaderConf := loader.Config{
-		TypeCheckFuncBodies: func(_ string) bool { return false },
+	conf := &packages.Config{
+		Mode: packages.LoadTypes,
 	}
-
-	loaderConf.Import(packageName)
-	loaderProg, err := loaderConf.Load()
+	pkgs, err := packages.Load(conf, packageName)
 	if err != nil {
-		return nil, errors.Wrap(err, fmt.Sprintf("failed to load package %s", packageName))
+		return nil, errors.Wrap(err, "failed to load the target package")
 	}
-	pkg := loaderProg.Package(packageName).Pkg
-	function := pkg.Scope().Lookup(funcName)
-	if function == nil {
+	targetFunc := pkgs[0].Types.Scope().Lookup(funcName)
+	if targetFunc == nil {
 		return nil, errors.Errorf("function %s does not exist in package %s", funcName, packageName)
 	}
-	funcType := function.Type()
-	sig, ok := funcType.(*types.Signature)
+	targetFuncType := targetFunc.Type()
+	sig, ok := targetFuncType.(*types.Signature)
 	if !ok {
 		// unreachable
 		return nil, errors.Errorf("%s is not a function", funcName)
