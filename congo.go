@@ -2,6 +2,7 @@ package congo
 
 import (
 	"bytes"
+	"go/ast"
 	"go/format"
 	"go/token"
 	"go/types"
@@ -11,7 +12,6 @@ import (
 	"github.com/ajalab/congo/interp"
 	"github.com/ajalab/congo/solver"
 
-	"golang.org/x/tools/go/loader"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/pkg/errors"
@@ -19,7 +19,8 @@ import (
 
 // Program is a type that contains information of the target program and symbols.
 type Program struct {
-	runnerPackageInfo  *loader.PackageInfo
+	runnerFile         *ast.File
+	runnerTypesInfo    *types.Info
 	runnerPackage      *ssa.Package
 	targetPackage      *ssa.Package
 	congoSymbolPackage *ssa.Package
@@ -128,7 +129,9 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		SymbolValues:       symbolValues,
 		SymbolTypes:        symbolTypes,
 		ReturnValues:       returnValues,
-		runnerPackageInfo:  prog.runnerPackageInfo,
+		runnerFile:         prog.runnerFile,
+		runnerTypesInfo:    prog.runnerTypesInfo,
+		runnerPackage:      prog.runnerPackage.Pkg,
 		targetPackage:      prog.targetPackage.Pkg,
 		congoSymbolPackage: prog.congoSymbolPackage.Pkg,
 		targetFuncSig:      prog.targetFunc.Signature,
@@ -161,7 +164,7 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 
 // DumpRunnerAST dumps the runner AST file into dest.
 func (prog *Program) DumpRunnerAST(dest io.Writer) error {
-	return format.Node(dest, token.NewFileSet(), prog.runnerPackageInfo.Files[0])
+	return format.Node(dest, token.NewFileSet(), prog.runnerFile)
 }
 
 // DumpRunnerSSA dumps the runner SSA into dest.
@@ -180,7 +183,9 @@ type ExecuteResult struct {
 	SymbolTypes  []types.Type
 	ReturnValues []interface{} // returned values corresponding to execution results. (invariant: len(SymbolValues) == len(ReturnValues))
 
-	runnerPackageInfo  *loader.PackageInfo
+	runnerFile         *ast.File
+	runnerTypesInfo    *types.Info
+	runnerPackage      *types.Package
 	targetPackage      *types.Package
 	congoSymbolPackage *types.Package
 	targetFuncSig      *types.Signature

@@ -19,7 +19,7 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 	runnerFuncName := "main" // TODO(ajalab): parametrize this variable for arbitrary defined runner functions
 
 	// Rewrite symbols (symbol.Symbols and symbol.RetVals) in the runner function
-	runnerFunc := r.runnerPackageInfo.Files[0].Scope.Lookup(runnerFuncName).Decl.(*ast.FuncDecl)
+	runnerFunc := r.runnerFile.Scope.Lookup(runnerFuncName).Decl.(*ast.FuncDecl)
 	symbolNames, retValNames, err := r.rewriteSymbols(runnerFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate test code")
@@ -27,7 +27,7 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 
 	// Determine the name for the variable of type *testing.T
 	testingT := "testingT"
-	runnerFuncType := r.runnerPackageInfo.Pkg.Scope().Lookup(runnerFuncName).(*types.Func)
+	runnerFuncType := r.runnerPackage.Scope().Lookup(runnerFuncName).(*types.Func)
 	if runnerFuncType.Scope().Lookup("t") == nil {
 		testingT = "t"
 	}
@@ -219,11 +219,11 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 		if !ok {
 			return true
 		}
-		ty := r.runnerPackageInfo.TypeOf(indexExpr)
+		ty := r.runnerTypesInfo.TypeOf(indexExpr)
 		if !(ty == symbolType || ty == retValType) {
 			return true
 		}
-		indexTV, ok := r.runnerPackageInfo.Types[indexExpr.Index]
+		indexTV, ok := r.runnerTypesInfo.Types[indexExpr.Index]
 		if !(ok && indexTV.Value.Kind() == constant.Int) {
 			err = errors.New("indexing symbols should be constant")
 			return false
@@ -233,7 +233,7 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 		switch ty {
 		case symbolType:
 			if callExpr, ok := c.Parent().(*ast.CallExpr); ok {
-				sig := r.runnerPackageInfo.TypeOf(callExpr.Fun).(*types.Signature)
+				sig := r.runnerTypesInfo.TypeOf(callExpr.Fun).(*types.Signature)
 				symbolNames[i] = sig.Params().At(c.Index()).Name()
 			}
 			name = symbolNames[i]
@@ -265,7 +265,7 @@ func (r *ExecuteResult) rewriteAssertions(testingT string, runnerFunc *ast.FuncD
 		if !ok {
 			return true
 		}
-		funcType := r.runnerPackageInfo.TypeOf(callExpr.Fun)
+		funcType := r.runnerTypesInfo.TypeOf(callExpr.Fun)
 		if funcType == testAssertType {
 			cond := callExpr.Args[0]
 			assertion := &ast.IfStmt{

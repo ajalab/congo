@@ -2,6 +2,7 @@ package congo
 
 import (
 	"go/constant"
+	"go/format"
 	"go/token"
 	"io/ioutil"
 	"log"
@@ -33,6 +34,7 @@ func Load(packageName string, funcName string) (*Program, error) {
 	}
 	defer os.Remove(runnerTmpFile.Name())
 
+	format.Node(runnerTmpFile, token.NewFileSet(), runnerFile)
 	if err := runnerTmpFile.Close(); err != nil {
 		return nil, err
 	}
@@ -122,7 +124,8 @@ func Load(packageName string, funcName string) (*Program, error) {
 	}
 
 	return &Program{
-		runnerFile:         runnerFile,
+		runnerFile:         pkgs[runnerPackage].Syntax[0],
+		runnerTypesInfo:    pkgs[runnerPackage].TypesInfo,
 		runnerPackage:      ssaPkgs[runnerPackage],
 		targetPackage:      ssaPkgs[targetPackage],
 		congoSymbolPackage: ssaPkgs[congoSymbolPackage],
