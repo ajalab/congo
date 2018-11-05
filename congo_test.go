@@ -2,6 +2,7 @@ package congo
 
 import (
 	"fmt"
+	"os"
 	"testing"
 )
 
@@ -18,7 +19,18 @@ func TestRun(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			prog, err := Load(tc.packageName, tc.funcName)
+			targetPackage, err := LoadTargetPackage(tc.packageName)
+			if err != nil {
+				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
+			}
+
+			runnerPackagePath, err := GenerateRunner(targetPackage, tc.funcName)
+			if err != nil {
+				t.Fatalf("failed to generate a runner: %v", err)
+			}
+			defer os.Remove(runnerPackagePath)
+
+			prog, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
 			if err != nil {
 				t.Fatalf("Config.Open: %v", err)
 			}
@@ -46,7 +58,18 @@ type executeTestCase struct {
 func testExecute(testCases []executeTestCase, t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			prog, err := Load(tc.packageName, tc.funcName)
+			targetPackage, err := LoadTargetPackage(tc.packageName)
+			if err != nil {
+				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
+			}
+
+			runnerPackagePath, err := GenerateRunner(targetPackage, tc.funcName)
+			if err != nil {
+				t.Fatalf("failed to generate a runner: %v", err)
+			}
+			defer os.Remove(runnerPackagePath)
+
+			prog, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
 			if err != nil {
 				t.Fatalf("Config.Open: %v\n", err)
 			}

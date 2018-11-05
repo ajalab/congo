@@ -3,15 +3,38 @@ package congo
 import (
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/token"
 	"go/types"
+	"io/ioutil"
 	"strconv"
 
 	"github.com/pkg/errors"
 	"golang.org/x/tools/go/packages"
 )
 
-func generateRunner(targetPackage *packages.Package, funcName string) (*ast.File, error) {
+// GenerateRunner generates the runner package and returns its filepath.
+func GenerateRunner(targetPackage *packages.Package, funcName string) (string, error) {
+	runnerFile, err := generateRunnerAST(targetPackage, funcName)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to generate runner AST file")
+	}
+	runnerTmpFile, err := ioutil.TempFile("", "*.go")
+	if err != nil {
+		return "", err
+	}
+	runnerPackagePath := runnerTmpFile.Name()
+
+	format.Node(runnerTmpFile, token.NewFileSet(), runnerFile)
+	if err := runnerTmpFile.Close(); err != nil {
+		return "", err
+	}
+
+	return runnerPackagePath, nil
+}
+
+// generateRunner generates a test runner file.
+func generateRunnerAST(targetPackage *packages.Package, funcName string) (*ast.File, error) {
 	// Load the target package
 
 	// Get argument types of the function

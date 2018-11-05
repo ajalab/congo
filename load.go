@@ -2,11 +2,8 @@ package congo
 
 import (
 	"go/constant"
-	"go/format"
 	"go/token"
-	"io/ioutil"
 	"log"
-	"os"
 
 	"golang.org/x/tools/go/packages"
 
@@ -22,7 +19,8 @@ func init() {
 
 const congoSymbolPackagePath = "github.com/ajalab/congo/symbol"
 
-func loadTargetPackage(packageName string) (*packages.Package, error) {
+// LoadTargetPackage loads the target package.
+func LoadTargetPackage(packageName string) (*packages.Package, error) {
 	conf := &packages.Config{
 		Mode: packages.LoadTypes,
 	}
@@ -37,41 +35,18 @@ func loadTargetPackage(packageName string) (*packages.Package, error) {
 	return pkgs[0], nil
 }
 
-// Load loads the target program
-func Load(packageName string, funcName string) (*Program, error) {
-	targetPackage, err := loadTargetPackage(packageName)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load the target package %s", packageName)
-	}
-	targetPackagePath := targetPackage.PkgPath
-	runnerFile, err := generateRunner(targetPackage, funcName)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate runner AST file")
-	}
-	runnerTmpFile, err := ioutil.TempFile("", "*.go")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(runnerTmpFile.Name())
-
-	format.Node(runnerTmpFile, token.NewFileSet(), runnerFile)
-	if err := runnerTmpFile.Close(); err != nil {
-		return nil, err
-	}
-
+// Load loads the target program.
+func Load(targetPackagePath string, runnerPackagePath string, funcName string) (*Program, error) {
 	config := &packages.Config{
 		Mode: packages.LoadAllSyntax,
 	}
-	pkgs, err := packages.Load(
-		config,
-		runnerTmpFile.Name(),
-	)
+	pkgs, err := packages.Load(config, runnerPackagePath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
 
 	runnerPackage := pkgs[0]
-	targetPackage = runnerPackage.Imports[targetPackagePath]
+	targetPackage := runnerPackage.Imports[targetPackagePath]
 	congoSymbolPackage := runnerPackage.Imports[congoSymbolPackagePath]
 
 	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))

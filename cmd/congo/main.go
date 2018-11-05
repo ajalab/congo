@@ -20,6 +20,7 @@ var (
 	o           = flag.String("o", "", "destination path for generated test code")
 	verbose     = flag.Bool("v", false, "verbose output (debug info)")
 	funcName    = flag.String("f", "", "name of the target function")
+	runner      = flag.String("r", "", "test template")
 )
 
 func main() {
@@ -44,10 +45,24 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-
-	prog, err := congo.Load(flag.Arg(0), *funcName)
+	packageName := flag.Arg(0)
+	targetPackage, err := congo.LoadTargetPackage(packageName)
 	if err != nil {
-		log.Fatalf("Config.Open: %v", err)
+		log.Fatalf("failed to load package %s: %+v", packageName, err)
+	}
+
+	runnerPackagePath := *runner
+	if runnerPackagePath == "" {
+		runnerPackagePath, err = congo.GenerateRunner(targetPackage, *funcName)
+		if err != nil {
+			log.Fatalf("failed to generate a runner: %v", err)
+		}
+		defer os.Remove(runnerPackagePath)
+	}
+
+	prog, err := congo.Load(targetPackage.PkgPath, runnerPackagePath, *funcName)
+	if err != nil {
+		log.Fatalf("failed to load: %+v", err)
 	}
 	if *verbose {
 		prog.DumpRunnerAST(os.Stderr)
