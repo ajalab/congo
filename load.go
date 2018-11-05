@@ -22,9 +22,29 @@ func init() {
 
 const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
 
+func loadTargetPackage(packageName string) (*packages.Package, error) {
+	conf := &packages.Config{
+		Mode: packages.LoadTypes,
+	}
+	query := packageName
+	if packageName[len(packageName)-3:] == ".go" {
+		query = "file=" + packageName
+	}
+	pkgs, err := packages.Load(conf, query)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load the target package")
+	}
+	return pkgs[0], nil
+}
+
 // Load loads the target program
 func Load(packageName string, funcName string) (*Program, error) {
-	runnerFile, err := generateRunner(packageName, funcName)
+	targetPackage, err := loadTargetPackage(packageName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load the target package %s", packageName)
+	}
+	targetPackagePath := targetPackage.PkgPath
+	runnerFile, err := generateRunner(targetPackage, funcName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}
@@ -42,41 +62,27 @@ func Load(packageName string, funcName string) (*Program, error) {
 	config := &packages.Config{
 		Mode: packages.LoadAllSyntax,
 	}
-	pkgs, err := packages.Load(config, "github.com/ajalab/congo/symbol", packageName, "file="+runnerTmpFile.Name())
+	pkgs, err := packages.Load(
+		config,
+		runnerTmpFile.Name(),
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
 
-	// Error-check and get indices for each package
-	var runnerPackage, congoSymbolPackage, targetPackage int
-	for i, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			err = errors.Errorf("failed to load package %s: %v", pkg.PkgPath, pkg.Errors)
-			break
-		}
-		switch pkg.PkgPath {
-		case packageCongoSymbolPath:
-			congoSymbolPackage = i
-		case packageName:
-			targetPackage = i
-		default:
-			if pkg.Name == "main" {
-				runnerPackage = i
-			} else {
-				err = errors.Errorf("a non-relevant package was found: %s", pkg.PkgPath)
-			}
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
+	runnerPackage := pkgs[0]
+	targetPackage = runnerPackage.Imports[targetPackagePath]
+	congoSymbolPackage := runnerPackage.Imports[packageCongoSymbolPath]
 
 	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))
 	ssaProg.Build()
+	runnerPackageSSA := ssaPkgs[0]
+	targetPackageSSA := ssaProg.Package(targetPackage.Types)
+	congoSymbolPackageSSA := ssaProg.Package(congoSymbolPackage.Types)
 
 	// Find references to congo.Symbol
-	symbolType := ssaPkgs[congoSymbolPackage].Members["SymbolType"].Type()
-	mainFunc := ssaPkgs[runnerPackage].Func("main")
+	symbolType := congoSymbolPackageSSA.Members["SymbolType"].Type()
+	mainFunc := runnerPackageSSA.Func("main")
 	symbolSubstTable := make(map[uint64]struct {
 		i int
 		v ssa.Value
@@ -124,12 +130,12 @@ func Load(packageName string, funcName string) (*Program, error) {
 	}
 
 	return &Program{
-		runnerFile:         pkgs[runnerPackage].Syntax[0],
-		runnerTypesInfo:    pkgs[runnerPackage].TypesInfo,
-		runnerPackage:      ssaPkgs[runnerPackage],
-		targetPackage:      ssaPkgs[targetPackage],
-		congoSymbolPackage: ssaPkgs[congoSymbolPackage],
-		targetFunc:         ssaPkgs[targetPackage].Func(funcName),
+		runnerFile:         runnerPackage.Syntax[0],
+		runnerTypesInfo:    runnerPackage.TypesInfo,
+		runnerPackage:      runnerPackageSSA,
+		targetPackage:      targetPackageSSA,
+		congoSymbolPackage: congoSymbolPackageSSA,
+		targetFunc:         targetPackageSSA.Func(funcName),
 		symbols:            symbols,
 	}, nil
 }

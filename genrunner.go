@@ -6,18 +6,16 @@ import (
 	"go/token"
 	"go/types"
 	"strconv"
-	"strings"
 
 	"github.com/pkg/errors"
 	"golang.org/x/tools/go/packages"
 )
 
-func generateRunner(packageName, funcName string) (*ast.File, error) {
-	packageSplit := strings.Split(packageName, "/")
-	packageIdent := packageSplit[len(packageSplit)-1]
+func generateRunner(targetPackage *packages.Package, funcName string) (*ast.File, error) {
+	// Load the target package
 
 	// Get argument types of the function
-	sig, err := getTargetFuncSig(packageName, funcName)
+	sig, err := getTargetFuncSig(targetPackage, funcName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get argument types of the function")
 	}
@@ -35,7 +33,7 @@ func generateRunner(packageName, funcName string) (*ast.File, error) {
 	args := generateSymbolicArgs(sig)
 	funcCallExpr := &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
-			X:   ast.NewIdent(packageIdent),
+			X:   ast.NewIdent(targetPackage.Name),
 			Sel: ast.NewIdent(funcName),
 		},
 		Args: args,
@@ -124,7 +122,7 @@ func generateRunner(packageName, funcName string) (*ast.File, error) {
 					&ast.ImportSpec{
 						Path: &ast.BasicLit{
 							Kind:  token.STRING,
-							Value: fmt.Sprintf("\"%s\"", packageName),
+							Value: fmt.Sprintf("\"%s\"", targetPackage.PkgPath),
 						},
 					},
 				},
@@ -145,17 +143,10 @@ func generateRunner(packageName, funcName string) (*ast.File, error) {
 	}, nil
 }
 
-func getTargetFuncSig(packageName string, funcName string) (*types.Signature, error) {
-	conf := &packages.Config{
-		Mode: packages.LoadTypes,
-	}
-	pkgs, err := packages.Load(conf, packageName)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to load the target package")
-	}
-	targetFunc := pkgs[0].Types.Scope().Lookup(funcName)
+func getTargetFuncSig(pkg *packages.Package, funcName string) (*types.Signature, error) {
+	targetFunc := pkg.Types.Scope().Lookup(funcName)
 	if targetFunc == nil {
-		return nil, errors.Errorf("function %s does not exist in package %s", funcName, packageName)
+		return nil, errors.Errorf("function %s does not exist in package %s", funcName, pkg)
 	}
 	targetFuncType := targetFunc.Type()
 	sig, ok := targetFuncType.(*types.Signature)
