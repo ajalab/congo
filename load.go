@@ -1,11 +1,16 @@
 package congo
 
 import (
+	"fmt"
 	"go/constant"
+	"go/format"
 	"go/token"
+	"io/ioutil"
 	"log"
+	"os"
 
-	"golang.org/x/tools/go/loader"
+	"golang.org/x/tools/go/packages"
+
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 
@@ -17,7 +22,6 @@ func init() {
 }
 
 const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
-const packageRunnerPath = "congomain"
 
 // Load loads the target program
 func Load(packageName string, funcName string) (*Program, error) {
@@ -25,31 +29,42 @@ func Load(packageName string, funcName string) (*Program, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate runner AST file")
 	}
+	runnerTmpFile, err := ioutil.TempFile("", "*.go")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(runnerTmpFile.Name())
 
-	// Load and type-check
-	var loaderConf loader.Config
-	loaderConf.CreateFromFiles(packageRunnerPath, runnerFile)
-	loaderConf.Import(packageCongoSymbolPath)
-	loaderConf.Import("runtime")
-	loaderProg, err := loaderConf.Load()
+	format.Node(runnerTmpFile, token.NewFileSet(), runnerFile)
+
+	if err := runnerTmpFile.Close(); err != nil {
+		return nil, err
+	}
+
+	config := &packages.Config{
+		Mode: packages.LoadAllSyntax,
+	}
+	pkgs, err := packages.Load(config, "github.com/ajalab/congo/symbol", packageName, "file="+runnerTmpFile.Name())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
 
-	// Convert to SSA form
-	ssaProg := ssautil.CreateProgram(loaderProg, ssa.BuilderMode(0))
+	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))
 	ssaProg.Build()
 
 	// Find SSA package of the runner
 	var runnerPackage, congoSymbolPackage, targetPackage *ssa.Package
-	for _, info := range loaderProg.AllPackages {
-		switch info.Pkg.Path() {
-		case packageRunnerPath:
-			runnerPackage = ssaProg.Package(info.Pkg)
+	for i, ssaPkg := range ssaPkgs {
+		fmt.Printf("%d: %s\n", i, ssaPkg)
+		switch ssaPkg.Pkg.Path() {
 		case packageCongoSymbolPath:
-			congoSymbolPackage = ssaProg.Package(info.Pkg)
+			congoSymbolPackage = ssaPkg
 		case packageName:
-			targetPackage = ssaProg.Package(info.Pkg)
+			targetPackage = ssaPkg
+		default:
+			if ssaPkg.Pkg.Name() == "main" {
+				runnerPackage = ssaPkg
+			}
 		}
 	}
 
@@ -108,7 +123,7 @@ func Load(packageName string, funcName string) (*Program, error) {
 	}
 
 	return &Program{
-		runnerPackageInfo:  loaderProg.Package(packageRunnerPath),
+		runnerPackageInfo:  nil, // loaderProg.Package(packageRunnerPath),
 		runnerPackage:      runnerPackage,
 		targetPackage:      targetPackage,
 		congoSymbolPackage: congoSymbolPackage,

@@ -558,7 +558,7 @@ func callSSA(i *interpreter, caller *frame, callpos token.Pos, fn *ssa.Function,
 //
 func runFrame(fr *frame) {
 	pkg := fr.block.Parent().Package()
-	tracing := pkg == fr.i.congoTraceTarget.Pkg || pkg.Pkg.Path() == packageRunnerPath
+	tracing := pkg == fr.i.congoTraceTarget.Pkg || pkg.Pkg.Name() == "main"
 
 	defer func() {
 		if fr.block == nil {

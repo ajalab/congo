@@ -116,7 +116,7 @@ func generateRunner(packageName, funcName string) (*ast.File, error) {
 
 	return &ast.File{
 		Scope: scope,
-		Name:  ast.NewIdent(packageRunnerPath),
+		Name:  ast.NewIdent("main"),
 		Decls: []ast.Decl{
 			&ast.GenDecl{
 				Tok: token.IMPORT,
