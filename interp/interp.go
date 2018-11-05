@@ -733,7 +733,7 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 			setGlobal(i, pkg, "sizeof_C_MStats", uintptr(sz))
 			deleteBodies(pkg, "GOROOT", "gogetenv")
 
-		case packageCongoSymbolPath:
+		case congoSymbolPackagePath:
 			values := make([]value, len(symbolicValues))
 			for i := 0; i < len(symbolicValues); i++ {
 				t := symbolicValues[i].Type

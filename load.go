@@ -20,7 +20,7 @@ func init() {
 	log.SetFlags(log.Llongfile)
 }
 
-const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
+const congoSymbolPackagePath = "github.com/ajalab/congo/symbol"
 
 func loadTargetPackage(packageName string) (*packages.Package, error) {
 	conf := &packages.Config{
@@ -72,7 +72,7 @@ func Load(packageName string, funcName string) (*Program, error) {
 
 	runnerPackage := pkgs[0]
 	targetPackage = runnerPackage.Imports[targetPackagePath]
-	congoSymbolPackage := runnerPackage.Imports[packageCongoSymbolPath]
+	congoSymbolPackage := runnerPackage.Imports[congoSymbolPackagePath]
 
 	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))
 	ssaProg.Build()

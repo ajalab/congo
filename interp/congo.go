@@ -6,7 +6,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-const packageCongoSymbolPath = "github.com/ajalab/congo/symbol"
+const congoSymbolPackagePath = "github.com/ajalab/congo/symbol"
 
 type SymbolicValue struct {
 	Value interface{}

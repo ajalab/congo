@@ -133,7 +133,7 @@ func generateRunner(targetPackage *packages.Package, funcName string) (*ast.File
 					&ast.ImportSpec{
 						Path: &ast.BasicLit{
 							Kind:  token.STRING,
-							Value: fmt.Sprintf("\"%s\"", packageCongoSymbolPath),
+							Value: fmt.Sprintf("\"%s\"", congoSymbolPackagePath),
 						},
 					},
 				},
