@@ -1,9 +1,7 @@
 package congo
 
 import (
-	"fmt"
 	"go/constant"
-	"go/format"
 	"go/token"
 	"io/ioutil"
 	"log"
@@ -35,8 +33,6 @@ func Load(packageName string, funcName string) (*Program, error) {
 	}
 	defer os.Remove(runnerTmpFile.Name())
 
-	format.Node(runnerTmpFile, token.NewFileSet(), runnerFile)
-
 	if err := runnerTmpFile.Close(); err != nil {
 		return nil, err
 	}
@@ -49,33 +45,36 @@ func Load(packageName string, funcName string) (*Program, error) {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
 
-	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))
-	ssaProg.Build()
-
-	// Find SSA package of the runner
-	var runnerPackage, congoSymbolPackage, targetPackage *ssa.Package
-	for i, ssaPkg := range ssaPkgs {
-		fmt.Printf("%d: %s\n", i, ssaPkg)
-		switch ssaPkg.Pkg.Path() {
+	// Error-check and get indices for each package
+	var runnerPackage, congoSymbolPackage, targetPackage int
+	for i, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			err = errors.Errorf("failed to load package %s: %v", pkg.PkgPath, pkg.Errors)
+			break
+		}
+		switch pkg.PkgPath {
 		case packageCongoSymbolPath:
-			congoSymbolPackage = ssaPkg
+			congoSymbolPackage = i
 		case packageName:
-			targetPackage = ssaPkg
+			targetPackage = i
 		default:
-			if ssaPkg.Pkg.Name() == "main" {
-				runnerPackage = ssaPkg
+			if pkg.Name == "main" {
+				runnerPackage = i
+			} else {
+				err = errors.Errorf("a non-relevant package was found: %s", pkg.PkgPath)
 			}
 		}
 	}
-
-	if runnerPackage == nil || congoSymbolPackage == nil || targetPackage == nil {
-		// unreachable
-		return nil, errors.Errorf("runner package or %s does not exist", packageCongoSymbolPath)
+	if err != nil {
+		return nil, err
 	}
 
+	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))
+	ssaProg.Build()
+
 	// Find references to congo.Symbol
-	symbolType := congoSymbolPackage.Members["SymbolType"].Type()
-	mainFunc := runnerPackage.Func("main")
+	symbolType := ssaPkgs[congoSymbolPackage].Members["SymbolType"].Type()
+	mainFunc := ssaPkgs[runnerPackage].Func("main")
 	symbolSubstTable := make(map[uint64]struct {
 		i int
 		v ssa.Value
@@ -123,11 +122,11 @@ func Load(packageName string, funcName string) (*Program, error) {
 	}
 
 	return &Program{
-		runnerPackageInfo:  nil, // loaderProg.Package(packageRunnerPath),
-		runnerPackage:      runnerPackage,
-		targetPackage:      targetPackage,
-		congoSymbolPackage: congoSymbolPackage,
-		targetFunc:         targetPackage.Func(funcName),
+		runnerFile:         runnerFile,
+		runnerPackage:      ssaPkgs[runnerPackage],
+		targetPackage:      ssaPkgs[targetPackage],
+		congoSymbolPackage: ssaPkgs[congoSymbolPackage],
+		targetFunc:         ssaPkgs[targetPackage].Func(funcName),
 		symbols:            symbols,
 	}, nil
 }
