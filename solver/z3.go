@@ -62,36 +62,35 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-func (s *Z3Solver) getSymbolAST(z3SymbolName string, ty types.Type) C.Z3_ast {
-	z3SymbolNameC := C.CString(z3SymbolName)
-	z3Symbol := C.Z3_mk_string_symbol(s.ctx, z3SymbolNameC)
-	C.free(unsafe.Pointer(z3SymbolNameC))
-
-	var sort C.Z3_sort
+func (s *Z3Solver) newSort(ty types.Type) C.Z3_sort {
 	switch ty := ty.(type) {
 	case *types.Basic:
 		info := ty.Info()
 		switch {
 		case info&types.IsBoolean > 0:
-			sort = C.Z3_mk_bool_sort(s.ctx)
+			return C.Z3_mk_bool_sort(s.ctx)
 		case info&types.IsInteger > 0:
-			sort = C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+			return C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
 		case info&types.IsString > 0:
-			sort = C.Z3_mk_string_sort(s.ctx)
+			return C.Z3_mk_string_sort(s.ctx)
 		}
 	case *types.Pointer:
-		valAST := s.getSymbolAST("p-"+z3SymbolName, ty.Elem())
-		valSort := C.Z3_get_sort(s.ctx, valAST)
+		valSort := s.newSort(ty.Elem())
 		datatypeName := fmt.Sprintf("dt-%d", len(s.datatypes))
 		datatype := newPointerSort(s.ctx, valSort, datatypeName)
 		s.datatypes[ty.String()] = datatype
-		sort = datatype.sort
+		return datatype.sort
 	}
+	log.Fatalf("unsupported type: %[1]v: %[1]T", ty)
+	panic("unimplemented")
+}
 
-	if sort == nil {
-		log.Fatalf("unsupported type: %v", ty)
-		panic("unimplemented")
-	}
+func (s *Z3Solver) addSymbol(z3SymbolName string, ty types.Type) C.Z3_ast {
+	z3SymbolNameC := C.CString(z3SymbolName)
+	z3Symbol := C.Z3_mk_string_symbol(s.ctx, z3SymbolNameC)
+	C.free(unsafe.Pointer(z3SymbolNameC))
+
+	sort := s.newSort(ty)
 	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
 }
 
@@ -100,7 +99,7 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 	s.symbols = make([]ssa.Value, len(symbols))
 	for i, value := range symbols {
 		z3SymbolName := fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, i)
-		ast := s.getSymbolAST(z3SymbolName, value.Type())
+		ast := s.addSymbol(z3SymbolName, value.Type())
 		if ast != nil {
 			s.asts[value] = ast
 		}
