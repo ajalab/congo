@@ -62,39 +62,12 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-func (s *Z3Solver) newSort(ty types.Type) C.Z3_sort {
-	switch ty := ty.(type) {
-	case *types.Basic:
-		info := ty.Info()
-		switch {
-		case info&types.IsBoolean > 0:
-			return C.Z3_mk_bool_sort(s.ctx)
-		case info&types.IsInteger > 0:
-			return C.Z3_mk_bv_sort(s.ctx, C.uint(sizeOfBasicKind(ty.Kind())))
-		case info&types.IsString > 0:
-			return C.Z3_mk_string_sort(s.ctx)
-		}
-	case *types.Pointer:
-		elemTy := ty.Elem()
-		datatypeName := fmt.Sprintf("p-%s", elemTy.String())
-		if datatype, ok := s.datatypes[ty.String()]; ok {
-			return datatype.Sort()
-		}
-		valSort := s.newSort(elemTy)
-		datatype := newPointerSort(s.ctx, valSort, datatypeName)
-		s.datatypes[ty.String()] = datatype
-		return datatype.sort
-	}
-	log.Fatalf("unsupported type: %[1]v: %[1]T", ty)
-	panic("unimplemented")
-}
-
 func (s *Z3Solver) addSymbol(z3SymbolName string, ty types.Type) C.Z3_ast {
 	z3SymbolNameC := C.CString(z3SymbolName)
 	z3Symbol := C.Z3_mk_string_symbol(s.ctx, z3SymbolNameC)
 	C.free(unsafe.Pointer(z3SymbolNameC))
 
-	sort := s.newSort(ty)
+	sort := newSort(s.ctx, ty, s.datatypes)
 	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
 }
 

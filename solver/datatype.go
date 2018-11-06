@@ -1,6 +1,10 @@
 package solver
 
 import (
+	"fmt"
+	"go/types"
+	"log"
+
 	/*
 		#cgo LDFLAGS: -lz3
 		#include <stdlib.h>
@@ -13,6 +17,8 @@ import "unsafe"
 type z3Datatype interface {
 	Sort() C.Z3_sort
 }
+
+type z3DatatypeDict map[string]z3Datatype
 
 type z3PointerDatatype struct {
 	nilDecl C.Z3_func_decl
@@ -27,9 +33,42 @@ func (dt *z3PointerDatatype) Sort() C.Z3_sort {
 	return dt.sort
 }
 
+func newSort(ctx C.Z3_context, ty types.Type, datatypes z3DatatypeDict) C.Z3_sort {
+	switch ty := ty.(type) {
+	case *types.Basic:
+		return newBasicSort(ctx, ty)
+	case *types.Pointer:
+		return newPointerSort(ctx, ty, datatypes)
+	}
+	log.Fatalf("unsupported type: %[1]v: %[1]T", ty)
+	panic("unimplemented")
+}
+
+func newBasicSort(ctx C.Z3_context, ty *types.Basic) C.Z3_sort {
+	info := ty.Info()
+	switch {
+	case info&types.IsBoolean > 0:
+		return C.Z3_mk_bool_sort(ctx)
+	case info&types.IsInteger > 0:
+		return C.Z3_mk_bv_sort(ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+	case info&types.IsString > 0:
+		return C.Z3_mk_string_sort(ctx)
+	}
+
+	log.Fatalf("unsupported basic type: %v: %v", ty, ty.Kind())
+	panic("unimplemented")
+}
+
 // newPointerDatatype creates a new datatype for pointers.
 // datatype pointer a = nil | val a
-func newPointerSort(ctx C.Z3_context, valSort C.Z3_sort, name string) *z3PointerDatatype {
+func newPointerSort(ctx C.Z3_context, ty *types.Pointer, datatypes z3DatatypeDict) C.Z3_sort {
+	elemTy := ty.Elem()
+	name := fmt.Sprintf("p-%s", elemTy.String())
+	if datatype, ok := datatypes[ty.String()]; ok {
+		return datatype.Sort()
+	}
+	valSort := newSort(ctx, elemTy, datatypes)
+
 	z3NilSymbolName := C.CString("nil")
 	z3NilRecogSymbolName := C.CString("is-nil")
 	z3NilSymbol := C.Z3_mk_string_symbol(ctx, z3NilSymbolName)
@@ -69,5 +108,15 @@ func newPointerSort(ctx C.Z3_context, valSort C.Z3_sort, name string) *z3Pointer
 	C.free(unsafe.Pointer(z3ValRecogSymbolName))
 	C.free(unsafe.Pointer(z3DatatypeSymbolName))
 
-	return datatype
+	datatypes[ty.String()] = datatype
+	return datatype.sort
 }
+
+/*
+func newStructSort(ctx C.Z3_context, ty *types.Struct, datatypes z3DatatypeDict) {
+	n := ty.NumFields()
+	for i := 0; i < n; i++ {
+		field := ty.Field(i)
+	}
+}
+*/
