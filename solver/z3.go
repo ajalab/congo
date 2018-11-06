@@ -75,8 +75,12 @@ func (s *Z3Solver) newSort(ty types.Type) C.Z3_sort {
 			return C.Z3_mk_string_sort(s.ctx)
 		}
 	case *types.Pointer:
-		valSort := s.newSort(ty.Elem())
-		datatypeName := fmt.Sprintf("dt-%d", len(s.datatypes))
+		elemTy := ty.Elem()
+		datatypeName := fmt.Sprintf("p-%s", elemTy.String())
+		if datatype, ok := s.datatypes[ty.String()]; ok {
+			return datatype.Sort()
+		}
+		valSort := s.newSort(elemTy)
 		datatype := newPointerSort(s.ctx, valSort, datatypeName)
 		s.datatypes[ty.String()] = datatype
 		return datatype.sort
