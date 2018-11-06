@@ -16,3 +16,11 @@ func TupleEquals(t Tuple) {
 		fmt.Println("t.Fst != t.Snd")
 	}
 }
+
+func PTupleEquals(t *Tuple) {
+	if t.Fst == 3 && t.Snd == 5 {
+		fmt.Println("t.Fst == 3")
+	} else {
+		fmt.Println("t.Fst != 3")
+	}
+}

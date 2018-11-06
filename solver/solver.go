@@ -26,7 +26,8 @@ func (b *BranchIf) Succs() []*ssa.BasicBlock {
 
 // PanicNilPointerDeref represents a (panic) branching caused by nil pointer dereference.
 type PanicNilPointerDeref struct {
-	instr *ssa.UnOp
+	instr ssa.Instruction
+	x     ssa.Value
 }
 
 func (p *PanicNilPointerDeref) Instr() ssa.Instruction {

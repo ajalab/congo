@@ -67,7 +67,7 @@ func (s *Z3Solver) addSymbol(z3SymbolName string, ty types.Type) C.Z3_ast {
 	z3Symbol := C.Z3_mk_string_symbol(s.ctx, z3SymbolNameC)
 	C.free(unsafe.Pointer(z3SymbolNameC))
 
-	sort := newSort(s.ctx, ty, s.datatypes)
+	sort := newSort(s.ctx, ty, "", s.datatypes)
 	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
 }
 
@@ -170,6 +170,21 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 				}
 				callStack = callStack[:len(callStack)-1]
 			}
+		case *ssa.FieldAddr:
+			// &((*pstruct).field)
+			k := instr.Field
+			tyPStruct := instr.X.Type().Underlying().(*types.Pointer) //.Elem()
+			tyElem := tyPStruct.Elem()
+			tyStruct := tyElem.Underlying().(*types.Struct)
+			tyPField := instr.Type().(*types.Pointer)
+			pointerStructDT := newPointerDatatype(s.ctx, tyPStruct, s.datatypes)
+			pointerFieldDT := newPointerDatatype(s.ctx, tyPField, s.datatypes)
+			structDT := newStructDatatype(s.ctx, tyStruct, tyElem.String(), s.datatypes)
+			ast := s.get(instr.X)
+			deref := C.Z3_mk_app(s.ctx, pointerStructDT.valAcc, 1, &ast)
+			acc := C.Z3_mk_app(s.ctx, structDT.accessors[k], 1, &deref)
+			val := C.Z3_mk_app(s.ctx, pointerFieldDT.valDecl, 1, &acc)
+			s.asts[instr] = val
 		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
 			if s.get(ifInstr.Cond) != nil {
@@ -189,7 +204,16 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 		case *ssa.UnOp:
 			s.branches = append(s.branches, &PanicNilPointerDeref{
 				instr: instr,
+				x:     instr.X,
 			})
+		case *ssa.FieldAddr:
+			s.branches = append(s.branches, &PanicNilPointerDeref{
+				instr: instr,
+				x:     instr.X,
+			})
+		default:
+			log.Fatalf("panic caused by %[1]v: %[1]T but not supported", instr)
+			panic("unreachable")
 		}
 	}
 }
@@ -480,7 +504,7 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 		}
 		return cond, nil
 	case *PanicNilPointerDeref:
-		pointer := b.instr.X
+		pointer := b.x
 		pointerAST := s.get(pointer)
 		if pointerAST == nil {
 			return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", pointer)
@@ -518,7 +542,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 		return nil, errors.Wrap(err, "failed to solve constraints")
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
-	fmt.Println(C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
+	fmt.Println("solver:", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	result := C.Z3_solver_check(s.ctx, solver)
 
@@ -531,7 +555,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 			C.Z3_model_inc_ref(s.ctx, m)
 			defer C.Z3_model_dec_ref(s.ctx, m)
 		}
-		fmt.Println(C.GoString(C.Z3_model_to_string(s.ctx, m)))
+		fmt.Println("model:", C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		values, err := s.getSymbolValues(m)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(s.ctx, m)))
@@ -575,6 +599,9 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 
 func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interface{}, error) {
 	kind := C.Z3_get_ast_kind(s.ctx, ast)
+	// Dereference for named types
+	ty = ty.Underlying()
+
 	switch kind {
 	case C.Z3_NUMERAL_AST:
 		basicTy, ok := ty.(*types.Basic)
@@ -641,6 +668,24 @@ func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interf
 			}
 			v, err := s.astToValue(m, accResAST, ty.Elem())
 			return &v, err
+		case *types.Struct:
+			n := ty.NumFields()
+			structDT := s.datatypes[ty.String()].(*z3StructDatatype)
+			result := make([]interface{}, n)
+			for i := 0; i < n; i++ {
+				query := C.Z3_mk_app(s.ctx, structDT.accessors[i], 1, &ast)
+				var r C.Z3_ast
+				ok := C.Z3_model_eval(s.ctx, m, query, C.bool(true), &r)
+				if !C.bool(ok) {
+					return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, query)))
+				}
+				v, err := s.astToValue(m, r, ty.Field(i).Type())
+				if err != nil {
+					return nil, errors.Errorf("failed to access field %v [#%d] of %v", ty.Field(i), i, ty)
+				}
+				result[i] = v
+			}
+			return result, nil
 		}
 		return nil, errors.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
 	}
