@@ -34,6 +34,7 @@ type Z3Solver struct {
 	branches  []Branch
 	symbols   []ssa.Value
 	datatypes map[string]z3Datatype
+	nonNil    map[ssa.Value]struct{}
 }
 
 //export goZ3ErrorHandler
@@ -54,6 +55,7 @@ func NewZ3Solver() *Z3Solver {
 		asts:      make(map[ssa.Value]C.Z3_ast),
 		ctx:       ctx,
 		datatypes: make(map[string]z3Datatype),
+		nonNil:    make(map[ssa.Value]struct{}),
 	}
 }
 
@@ -184,6 +186,7 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 			deref := C.Z3_mk_app(s.ctx, pointerStructDT.valAcc, 1, &ast)
 			acc := C.Z3_mk_app(s.ctx, structDT.accessors[k], 1, &deref)
 			val := C.Z3_mk_app(s.ctx, pointerFieldDT.valDecl, 1, &acc)
+			s.nonNil[instr.X] = struct{}{}
 			s.asts[instr] = val
 		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
@@ -407,6 +410,7 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		}
 		pointerDT := s.datatypes[pointer.Type().String()].(*z3PointerDatatype)
 		acc := C.Z3_mk_app(s.ctx, pointerDT.valAcc, 1, &pointerAST)
+		s.nonNil[pointer] = struct{}{}
 		return acc, nil
 		// case token.XOR:
 		// case token.ARROW:
@@ -542,6 +546,11 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 		return nil, errors.Wrap(err, "failed to solve constraints")
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
+	for v := range s.nonNil {
+		ast := s.get(v)
+		pointerDT := s.datatypes[v.Type().String()].(*z3PointerDatatype)
+		C.Z3_solver_assert(s.ctx, solver, C.Z3_mk_app(s.ctx, pointerDT.isVal, 1, &ast))
+	}
 	fmt.Println("solver:", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	result := C.Z3_solver_check(s.ctx, solver)
