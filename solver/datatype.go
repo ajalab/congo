@@ -12,7 +12,6 @@ import (
 	*/
 	"C"
 )
-import "unsafe"
 
 type z3Datatype interface {
 	Sort() C.Z3_sort
@@ -22,10 +21,10 @@ type z3DatatypeDict map[string]z3Datatype
 
 type z3PointerDatatype struct {
 	nilDecl C.Z3_func_decl
-	valDecl C.Z3_func_decl
-	valAcc  C.Z3_func_decl
+	refDecl C.Z3_func_decl
+	refAcc  C.Z3_func_decl
 	isNil   C.Z3_func_decl
-	isVal   C.Z3_func_decl
+	isRef   C.Z3_func_decl
 	sort    C.Z3_sort
 }
 
@@ -45,23 +44,17 @@ func (dt *z3StructDatatype) Sort() C.Z3_sort {
 	return dt.sort
 }
 
-func z3MkStringSymbol(ctx C.Z3_context, s string) C.Z3_symbol {
-	c := C.CString(s)
-	defer C.free(unsafe.Pointer(c))
-	return C.Z3_mk_string_symbol(ctx, c)
-}
-
 func newSort(ctx C.Z3_context, ty types.Type, name string, datatypes z3DatatypeDict) C.Z3_sort {
 	switch ty := ty.(type) {
 	case *types.Basic:
 		return newBasicSort(ctx, ty)
 	case *types.Pointer:
-		dt := newPointerDatatype(ctx, ty, datatypes)
+		dt := getPointerDatatype(ctx, ty, datatypes)
 		return dt.sort
 	case *types.Named:
 		return newSort(ctx, ty.Underlying(), ty.String(), datatypes)
 	case *types.Struct:
-		dt := newStructDatatype(ctx, ty, name, datatypes)
+		dt := getStructDatatype(ctx, ty, name, datatypes)
 		return dt.sort
 	}
 	log.Fatalf("unsupported type: %[1]v: %[1]T", ty)
@@ -83,61 +76,54 @@ func newBasicSort(ctx C.Z3_context, ty *types.Basic) C.Z3_sort {
 	panic("unimplemented")
 }
 
-// newPointerDatatype creates a new datatype for pointers.
-// datatype pointer a = nil | val a
-func newPointerDatatype(ctx C.Z3_context, ty *types.Pointer, datatypes z3DatatypeDict) *z3PointerDatatype {
+// getPointerDatatype returns a datatype for pointers and
+// creates a new one if not registered.
+// datatype pointer a = nil | ref a
+func getPointerDatatype(ctx C.Z3_context, ty *types.Pointer, datatypes z3DatatypeDict) *z3PointerDatatype {
 	elemTy := ty.Elem()
-	name := fmt.Sprintf("ref-%s", elemTy.String())
 	if datatype, ok := datatypes[ty.String()]; ok {
 		return datatype.(*z3PointerDatatype)
 	}
-	valSort := newSort(ctx, elemTy, "", datatypes)
 
-	z3NilSymbolName := C.CString("nil")
-	z3NilRecogSymbolName := C.CString("is-nil")
-	z3NilSymbol := C.Z3_mk_string_symbol(ctx, z3NilSymbolName)
-	z3NilRecogSymbol := C.Z3_mk_string_symbol(ctx, z3NilRecogSymbolName)
-	z3NilCons := C.Z3_mk_constructor(ctx, z3NilSymbol, z3NilRecogSymbol, 0, nil, nil, nil)
-	z3ValSymbolName := C.CString("ref")
-	z3ValRecogSymbolName := C.CString("is-ref")
+	nilConsSymbol := z3MkStringSymbol(ctx, "nil")
+	nilRecogSymbol := z3MkStringSymbol(ctx, "is-nil")
+	nilCons := C.Z3_mk_constructor(ctx, nilConsSymbol, nilRecogSymbol, 0, nil, nil, nil)
+	defer C.Z3_del_constructor(ctx, nilCons)
 
-	z3ValSymbol := C.Z3_mk_string_symbol(ctx, z3ValSymbolName)
-	z3ValRecogSymbol := C.Z3_mk_string_symbol(ctx, z3ValRecogSymbolName)
-	z3ValFieldSymbol := z3MkStringSymbol(ctx, "deref")
-	z3ValSortRef := C.uint(0)
-	z3ValCons := C.Z3_mk_constructor(ctx, z3ValSymbol, z3ValRecogSymbol, 1, &z3ValFieldSymbol, &valSort, &z3ValSortRef)
-	z3Constructors := [...]C.Z3_constructor{z3NilCons, z3ValCons}
-	z3DatatypeSymbolName := C.CString(name)
-	z3DatatypeSymbol := C.Z3_mk_string_symbol(ctx, z3DatatypeSymbolName)
-	sort := C.Z3_mk_datatype(ctx, z3DatatypeSymbol, 2, &z3Constructors[0])
+	refConsSymbol := z3MkStringSymbol(ctx, "ref")
+	refRecogSymbol := z3MkStringSymbol(ctx, "is-ref")
+	refFieldSymbol := z3MkStringSymbol(ctx, "deref")
+	refSort := newSort(ctx, elemTy, "", datatypes)
+	refSortRef := C.uint(0)
+	refCons := C.Z3_mk_constructor(ctx, refConsSymbol, refRecogSymbol, 1, &refFieldSymbol, &refSort, &refSortRef)
+	defer C.Z3_del_constructor(ctx, refCons)
 
-	var nilDecl, isNil, valDecl, isVal, valAcc C.Z3_func_decl
-	C.Z3_query_constructor(ctx, z3NilCons, 0, &nilDecl, &isNil, nil)
-	C.Z3_query_constructor(ctx, z3ValCons, 1, &valDecl, &isVal, &valAcc)
+	constructors := [...]C.Z3_constructor{nilCons, refCons}
+	name := fmt.Sprintf("ref-%s", elemTy.String())
+	datatypeSymbol := z3MkStringSymbol(ctx, name)
+	sort := C.Z3_mk_datatype(ctx, datatypeSymbol, 2, &constructors[0])
+
+	var nilDecl, isNil, refDecl, isRef, refAcc C.Z3_func_decl
+	C.Z3_query_constructor(ctx, nilCons, 0, &nilDecl, &isNil, nil)
+	C.Z3_query_constructor(ctx, refCons, 1, &refDecl, &isRef, &refAcc)
 
 	datatype := &z3PointerDatatype{
 		nilDecl: nilDecl,
-		valDecl: valDecl,
-		valAcc:  valAcc,
+		refDecl: refDecl,
+		refAcc:  refAcc,
 		isNil:   isNil,
-		isVal:   isVal,
+		isRef:   isRef,
 		sort:    sort,
 	}
-
-	C.Z3_del_constructor(ctx, z3NilCons)
-	C.Z3_del_constructor(ctx, z3ValCons)
-	C.free(unsafe.Pointer(z3NilSymbolName))
-	C.free(unsafe.Pointer(z3NilRecogSymbolName))
-	C.free(unsafe.Pointer(z3ValSymbolName))
-	C.free(unsafe.Pointer(z3ValRecogSymbolName))
-	C.free(unsafe.Pointer(z3DatatypeSymbolName))
 
 	datatypes[ty.String()] = datatype
 	return datatype
 }
 
+// getStructDatatype returns a datatype for structs and
+// creates a new one if not registered.
 // TODO(ajalab) zero field struct
-func newStructDatatype(ctx C.Z3_context, ty *types.Struct, name string, datatypes z3DatatypeDict) *z3StructDatatype {
+func getStructDatatype(ctx C.Z3_context, ty *types.Struct, name string, datatypes z3DatatypeDict) *z3StructDatatype {
 	if datatype, ok := datatypes[ty.String()]; ok {
 		return datatype.(*z3StructDatatype)
 	}

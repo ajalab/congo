@@ -26,6 +26,12 @@ const (
 	z3SymbolPrefixForSymbol string = "symbol-"
 )
 
+func z3MkStringSymbol(ctx C.Z3_context, s string) C.Z3_symbol {
+	c := C.CString(s)
+	defer C.free(unsafe.Pointer(c))
+	return C.Z3_mk_string_symbol(ctx, c)
+}
+
 // Z3Solver is a type that holds the Z3 context, assertions, and symbols.
 type Z3Solver struct {
 	asts map[ssa.Value]C.Z3_ast
@@ -64,11 +70,8 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-func (s *Z3Solver) addSymbol(z3SymbolName string, ty types.Type) C.Z3_ast {
-	z3SymbolNameC := C.CString(z3SymbolName)
-	z3Symbol := C.Z3_mk_string_symbol(s.ctx, z3SymbolNameC)
-	C.free(unsafe.Pointer(z3SymbolNameC))
-
+func (s *Z3Solver) addSymbol(name string, ty types.Type) C.Z3_ast {
+	z3Symbol := z3MkStringSymbol(s.ctx, name)
 	sort := newSort(s.ctx, ty, "", s.datatypes)
 	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
 }
@@ -179,15 +182,15 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 			tyElem := tyPStruct.Elem()
 			tyStruct := tyElem.Underlying().(*types.Struct)
 			tyPField := instr.Type().(*types.Pointer)
-			pointerStructDT := newPointerDatatype(s.ctx, tyPStruct, s.datatypes)
-			pointerFieldDT := newPointerDatatype(s.ctx, tyPField, s.datatypes)
-			structDT := newStructDatatype(s.ctx, tyStruct, tyElem.String(), s.datatypes)
+			pointerStructDT := getPointerDatatype(s.ctx, tyPStruct, s.datatypes)
+			pointerFieldDT := getPointerDatatype(s.ctx, tyPField, s.datatypes)
+			structDT := getStructDatatype(s.ctx, tyStruct, tyElem.String(), s.datatypes)
 			ast := s.get(instr.X)
-			deref := C.Z3_mk_app(s.ctx, pointerStructDT.valAcc, 1, &ast)
+			deref := C.Z3_mk_app(s.ctx, pointerStructDT.refAcc, 1, &ast)
 			acc := C.Z3_mk_app(s.ctx, structDT.accessors[k], 1, &deref)
-			val := C.Z3_mk_app(s.ctx, pointerFieldDT.valDecl, 1, &acc)
+			ref := C.Z3_mk_app(s.ctx, pointerFieldDT.refDecl, 1, &acc)
 			s.nonNil[instr.X] = struct{}{}
-			s.asts[instr] = val
+			s.asts[instr] = ref
 		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
 			if s.get(ifInstr.Cond) != nil {
@@ -404,14 +407,15 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		return C.Z3_mk_not(s.ctx, x), nil
 	case token.MUL:
 		pointer := instr.X
+		pointerTy := pointer.Type().(*types.Pointer)
 		pointerAST := s.get(pointer)
 		if pointerAST == nil {
 			return nil, errors.Errorf("corresponding AST for pointer was not found: %v", pointer)
 		}
-		pointerDT := s.datatypes[pointer.Type().String()].(*z3PointerDatatype)
-		acc := C.Z3_mk_app(s.ctx, pointerDT.valAcc, 1, &pointerAST)
+		pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
+		ref := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &pointerAST)
 		s.nonNil[pointer] = struct{}{}
-		return acc, nil
+		return ref, nil
 		// case token.XOR:
 		// case token.ARROW:
 	}
@@ -509,11 +513,12 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 		return cond, nil
 	case *PanicNilPointerDeref:
 		pointer := b.x
+		pointerTy := pointer.Type().(*types.Pointer)
 		pointerAST := s.get(pointer)
 		if pointerAST == nil {
 			return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", pointer)
 		}
-		pointerDT := s.datatypes[pointer.Type().String()].(*z3PointerDatatype)
+		pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
 		cond := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &pointerAST)
 		if negate {
 			cond = C.Z3_mk_not(s.ctx, cond)
@@ -548,8 +553,8 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	C.Z3_solver_assert(s.ctx, solver, negCond)
 	for v := range s.nonNil {
 		ast := s.get(v)
-		pointerDT := s.datatypes[v.Type().String()].(*z3PointerDatatype)
-		C.Z3_solver_assert(s.ctx, solver, C.Z3_mk_app(s.ctx, pointerDT.isVal, 1, &ast))
+		pointerDT := getPointerDatatype(s.ctx, v.Type().(*types.Pointer), s.datatypes)
+		C.Z3_solver_assert(s.ctx, solver, C.Z3_mk_app(s.ctx, pointerDT.isRef, 1, &ast))
 	}
 	fmt.Println("solver:", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
@@ -656,7 +661,7 @@ func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interf
 				return b == C.Z3_L_TRUE, nil
 			}
 		case *types.Pointer:
-			pointerDT := s.datatypes[ty.String()].(*z3PointerDatatype)
+			pointerDT := getPointerDatatype(s.ctx, ty, s.datatypes)
 			isNilQuery := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &ast)
 			var isNilResAST C.Z3_ast
 			ok := C.Z3_model_eval(s.ctx, m, isNilQuery, C.bool(true), &isNilResAST)
@@ -669,7 +674,7 @@ func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interf
 			}
 
 			// the pointer points to another value
-			accQuery := C.Z3_mk_app(s.ctx, pointerDT.valAcc, 1, &ast)
+			accQuery := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &ast)
 			var accResAST C.Z3_ast
 			ok = C.Z3_model_eval(s.ctx, m, accQuery, C.bool(true), &accResAST)
 			if !C.bool(ok) {
@@ -679,7 +684,7 @@ func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interf
 			return &v, err
 		case *types.Struct:
 			n := ty.NumFields()
-			structDT := s.datatypes[ty.String()].(*z3StructDatatype)
+			structDT := getStructDatatype(s.ctx, ty, "", s.datatypes)
 			result := make([]interface{}, n)
 			for i := 0; i < n; i++ {
 				query := C.Z3_mk_app(s.ctx, structDT.accessors[i], 1, &ast)
