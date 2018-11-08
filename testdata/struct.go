@@ -24,3 +24,11 @@ func PTupleEquals(t *Tuple) {
 		fmt.Println("t.Fst != 3")
 	}
 }
+
+func PTuplesEqual(t1, t2 *Tuple) {
+	if t1.Fst == t2.Fst && t1.Snd == t2.Snd {
+		fmt.Println("t1 == t2")
+	} else {
+		fmt.Println("t1 != t2")
+	}
+}

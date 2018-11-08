@@ -158,3 +158,11 @@ func TestExecutePointer(t *testing.T) {
 	}
 	testExecute(testCases, t)
 }
+
+func TestExecuteStruct(t *testing.T) {
+	testCases := []executeTestCase{
+		{"github.com/ajalab/congo/testdata", "PTupleEquals", 4, 1},
+		{"github.com/ajalab/congo/testdata", "PTuplesEqual", 4, 1},
+	}
+	testExecute(testCases, t)
+}

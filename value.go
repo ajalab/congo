@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"log"
 	"strconv"
 	"unsafe"
 
@@ -148,7 +149,39 @@ func value2ASTExpr(v interface{}, ty types.Type) ast.Expr {
 			return &ast.CallExpr{
 				Fun: ast.NewIdent(basicTy.Name() + "ptr"),
 				Args: []ast.Expr{
-					value2ASTExpr(*p, ty.Elem()),
+					value2ASTExpr(*p, basicTy),
+				},
+			}
+		}
+
+		namedTy, ok := ty.Elem().(*types.Named)
+		if !ok {
+			log.Fatalf("pointer of unnamed and non-basic type is not supported")
+			panic("unimplemented")
+		}
+		typeName := namedTy.Obj()
+		name := typeName.Name()
+		pkgName := typeName.Pkg().Name()
+		elem := ty.Elem().Underlying()
+		switch ty := elem.(type) {
+		case *types.Struct:
+			n := ty.NumFields()
+			elts := make([]ast.Expr, 0, n)
+			for i := 0; i < n; i++ {
+				e := ty.Field(i)
+				elts = append(elts, &ast.KeyValueExpr{
+					Key:   ast.NewIdent(e.Name()),
+					Value: value2ASTExpr(((*p).([]interface{}))[i], e.Type()),
+				})
+			}
+			return &ast.UnaryExpr{
+				Op: token.AND,
+				X: &ast.CompositeLit{
+					Type: &ast.SelectorExpr{
+						X:   ast.NewIdent(pkgName),
+						Sel: ast.NewIdent(name),
+					},
+					Elts: elts,
 				},
 			}
 		}
