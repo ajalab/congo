@@ -496,7 +496,7 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 			return C.Z3_mk_string(s.ctx, C.CString(constant.StringVal(v.Value)))
 		}
 	}
-	log.Fatalln("getZ3ConstAST: Unimplemented const value", v)
+	log.Fatalln("getConstAST: Unimplemented const value", v)
 	panic("unimplemented")
 }
 
