@@ -32,3 +32,13 @@ func PTuplesEqual(t1, t2 *Tuple) {
 		fmt.Println("t1 != t2")
 	}
 }
+
+func TupleStore(t1 *Tuple) {
+	t1.Fst, t1.Snd = t1.Fst+t1.Snd, t1.Fst-t1.Snd
+
+	if t1.Fst > 0 && t1.Snd > 0 {
+		fmt.Println("t1.Fst + t1.Snd > 0 && t1.Fst - t1.Snd > 0")
+	} else {
+		fmt.Println("not")
+	}
+}

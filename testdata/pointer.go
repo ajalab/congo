@@ -57,3 +57,12 @@ func PointerEquals(a *int) {
 		fmt.Println("&a != &PVar")
 	}
 }
+
+func PointerStore(a *int) {
+	if *a > 0 {
+		*a = *a * 2
+	}
+	if *a > 2 {
+		*a = *a + 1
+	}
+}
