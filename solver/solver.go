@@ -15,6 +15,7 @@ import (
 	"go/token"
 	"go/types"
 	"log"
+	"os"
 	"strconv"
 	"unsafe"
 
@@ -556,7 +557,8 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 		pointerDT := getPointerDatatype(s.ctx, v.Type().(*types.Pointer), s.datatypes)
 		C.Z3_solver_assert(s.ctx, solver, C.Z3_mk_app(s.ctx, pointerDT.isRef, 1, &ast))
 	}
-	fmt.Println("solver:", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
+
+	fmt.Fprintf(os.Stderr, "solver\n%s\n", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	result := C.Z3_solver_check(s.ctx, solver)
 
@@ -569,7 +571,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 			C.Z3_model_inc_ref(s.ctx, m)
 			defer C.Z3_model_dec_ref(s.ctx, m)
 		}
-		fmt.Println("model:", C.GoString(C.Z3_model_to_string(s.ctx, m)))
+		fmt.Fprintf(os.Stderr, "model\n%s\n", C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		values, err := s.getSymbolValues(m)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(s.ctx, m)))
