@@ -37,12 +37,78 @@ because it first creates empty `foo_test.go`, which will prevent the go compiler
 Currently Congo generates a separate package (`*_test`) for a target package.
 This means you cannot specify unexported functions (starting with a lower letter).
 
+## Generated Tests
+
+If your target function signature has no return values (like `func (a, b int)`),
+Congo will generate a test code calling it with arguments found by concolic execution:
+
+```go
+// TestFoo is a test for Foo(a, b int).
+func TestFoo(t *testing.T) {
+	congoTestCases := []struct {
+		a int
+		b int
+	}{ /* test cases */ }
+	for i, tc := range congoTestCases {
+		t.Run(fmt.Sprintf("test%d", i), func(t *testing.T) {
+			myapp.Foo(tc.a, tc.b)
+		})
+	}
+}
+```
+
+If the function returns a single value like `func (a, b int) int`, an additional field `expected` is inserted to the test case struct.
+This field holds the value which the target function given the corresponding arguments returned.
+Also an assertion to check the equality between the expected value and the actual value computed in the test execution. This should be useful for regression testing.
+
+```go
+// TestBar is a test for Bar(a, b int) int.
+func TestBar(t *testing.T) {
+	congoTestCases := []struct {
+		a        int
+		b        int
+		expected int // return value
+	}{ /* test cases */ }
+	for i, tc := range congoTestCases {
+		t.Run(fmt.Sprintf("test%d", i), func(t *testing.T) {
+			actual0 := myapp.Bar(tc.a, tc.b)
+			if actual0 != tc.expected {
+				t.Error("assertion failed")
+			}
+		})
+	}
+}
+```
+
+If the function returns multiple values like `func (a, b int) (int, bool)`,
+then the generated test will have multiple expect fields and assertions:
+
+```go
+// TestBaz is a test for Baz(a, b int) (int, bool).
+func TestBaz(t *testing.T) {
+	congoTestCases := []struct {
+		a         int
+		b         int
+		expected0 int
+		expected1 bool
+	}{ /* test cases */ }
+	for i, tc := range congoTestCases {
+		t.Run(fmt.Sprintf("test%d", i), func(t *testing.T) {
+			actual0, actual1 := myapp.Baz(tc.a, tc.b)
+			if !(actual0 == tc.expected0 && actual1 == tc.expected1) {
+				t.Error("assertion failed")
+			}
+		})
+	}
+}
+```
+
 ## Features
 
 The following types and operations are currently supported.
 
 - booleans and logical operators
-- integers (`int`, `uint`, ...) and basic arithmetic operators. Congo treat integers by using Z3 bit-vector.
+- integers (`int`, `uint`, `int8`, ...) and basic arithmetic operators. Congo treat integers by using Z3 bit-vector.
 - strings (only concatenation, checking equality, and computing length)
 - pointers of above types and dereference. Congo detects panic caused by nil pointer dereference.
 - pointers of struct
