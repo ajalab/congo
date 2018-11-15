@@ -23,6 +23,10 @@ var (
 	runner      = flag.String("r", "", "test template")
 )
 
+func init() {
+	log.SetFlags(log.Llongfile)
+}
+
 func main() {
 	flag.Parse()
 

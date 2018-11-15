@@ -3,7 +3,6 @@ package congo
 import (
 	"go/constant"
 	"go/token"
-	"log"
 
 	"golang.org/x/tools/go/packages"
 
@@ -12,10 +11,6 @@ import (
 
 	"github.com/pkg/errors"
 )
-
-func init() {
-	log.SetFlags(log.Llongfile)
-}
 
 const congoSymbolPackagePath = "github.com/ajalab/congo/symbol"
 
@@ -60,7 +55,6 @@ func Load(targetPackagePath string, runnerPackagePath string, funcName string) (
 		if pkg.IllTyped {
 			return nil, errors.Errorf("package %s contains type error", pkg.PkgPath)
 		}
-		log.Printf("%#v", pkg)
 		if pkg.Name != "runtime" {
 			runnerPackageIdx = i
 		}
