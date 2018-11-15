@@ -40,7 +40,7 @@ func Load(targetPackagePath string, runnerPackagePath string, funcName string) (
 	config := &packages.Config{
 		Mode: packages.LoadAllSyntax,
 	}
-	pkgs, err := packages.Load(config, runnerPackagePath)
+	pkgs, err := packages.Load(config, runnerPackagePath, "name=runtime")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
