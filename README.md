@@ -108,13 +108,13 @@ func TestBaz(t *testing.T) {
 The following types and operations are currently supported.
 
 - booleans and logical operators
-- integers (`int`, `uint`, `int8`, ...) and basic arithmetic operators. Congo treat integers by using Z3 bit-vector.
+- integers (`int`, `uint`, `int8`, ...) and basic arithmetic operators. Congo treat an integer as a bit-vector.
 - strings (only concatenation, checking equality, and computing length)
 - pointers of above types and dereference. Congo detects panic caused by nil pointer dereference.
 - pointers of struct
 - function calls within the target package.
 
-[testdata/](testdata/) contains functions that Congo can generate test cases for them (but there are some exceptions).
+[testdata/](testdata/) contains functions that Congo supports (but there are some exceptions).
 
 ## Unsupported Features
 
