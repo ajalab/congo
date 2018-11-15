@@ -43,10 +43,10 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 	testTemp := fmt.Sprintf(`
 		package %s
 
-		func %s(%s *testing.T) {
+		func %s(t *testing.T) {
 			congoTestCases := []struct{}{}
 			for i, tc := range congoTestCases {
-				t.Run(fmt.Sprintf("test%%d", i), func () {
+				t.Run(fmt.Sprintf("test%%d", i), func (%s *testing.T) {
 
 				})
 			}
