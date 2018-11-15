@@ -32,6 +32,9 @@ func LoadTargetPackage(packageName string) (*packages.Package, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load the target package")
 	}
+	if len(pkgs) == 0 {
+		return nil, errors.New("no packages could be loaded")
+	}
 	return pkgs[0], nil
 }
 
@@ -44,14 +47,41 @@ func Load(targetPackagePath string, runnerPackagePath string, funcName string) (
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}
+	if len(pkgs) == 0 {
+		return nil, errors.New("no packages could be loaded")
+	}
 
-	runnerPackage := pkgs[0]
+	runnerPackageIdx := -1
+	for i, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			return nil, errors.Errorf("failed to load package %s: %v", pkg.PkgPath, pkg.Errors)
+		}
+		// It is possible that pkg.IllTyped becomes true but pkg.Errors has no error records.
+		if pkg.IllTyped {
+			return nil, errors.Errorf("package %s contains type error", pkg.PkgPath)
+		}
+		log.Printf("%#v", pkg)
+		if pkg.Name != "runtime" {
+			runnerPackageIdx = i
+		}
+	}
+	if runnerPackageIdx < 0 {
+		return nil, errors.New("failed to load the runner package")
+	}
+
+	runnerPackage := pkgs[runnerPackageIdx]
 	targetPackage := runnerPackage.Imports[targetPackagePath]
 	congoSymbolPackage := runnerPackage.Imports[congoSymbolPackagePath]
 
 	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))
+	for i, ssaPkg := range ssaPkgs {
+		if ssaPkg == nil {
+			return nil, errors.Errorf("failed to compile package %s into SSA form", pkgs[i])
+		}
+	}
 	ssaProg.Build()
-	runnerPackageSSA := ssaPkgs[0]
+
+	runnerPackageSSA := ssaPkgs[runnerPackageIdx]
 	targetPackageSSA := ssaProg.Package(targetPackage.Types)
 	congoSymbolPackageSSA := ssaProg.Package(congoSymbolPackage.Types)
 
