@@ -172,7 +172,7 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 				case 1:
 					s.asts[callInstr] = s.get(instr.Results[0])
 				default:
-					log.Fatalln("multiple return values are not supported")
+					log.Println("multiple return values are not supported")
 				}
 				callStack = callStack[:len(callStack)-1]
 			}
