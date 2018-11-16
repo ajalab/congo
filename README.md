@@ -121,7 +121,7 @@ The following types and operations are currently supported.
 ## Unsupported Features
 
 Though Congo is being enthusiastically developed,
-but lots of features that you will need are not supported yet.
+lots of features that you will need are not supported yet.
 
 - floating points
 - storing a value through a pointer
@@ -130,3 +130,11 @@ but lots of features that you will need are not supported yet.
 - channels
 - goroutines
 - ...
+
+## Internals
+
+See [INTERNALS.md](INTERNALS.md) for details on how Congo works.
+
+## License
+
+Congo is licensed under the [MIT License](LICENSE).
