@@ -14,7 +14,7 @@ import "myapp"
 import "github.com/ajalab/congo/symbol"
 
 func main() {
-	actual0 := myapp.Max(symbol.Symbols[0].(int), symbol.Symbols[1].(int))
+	actual0 := myapp.Foo(symbol.Symbols[0].(int), symbol.Symbols[1].(int))
 	symbol.TestAssert(actual0 == symbol.RetVals[0].(int))
 }
 ```
