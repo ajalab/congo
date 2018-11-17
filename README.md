@@ -1,6 +1,6 @@
 # Congo
 
-![](assets/screenshot.png)
+![screenshot](assets/screenshot.png)
 
 Congo is a test generation framework for [Go](https://golang.org/).
 It adopts [concolic testing](https://en.wikipedia.org/wiki/Concolic_testing) to generate test cases that will
@@ -61,7 +61,7 @@ func TestFoo(t *testing.T) {
 
 If the function returns a single value like `func (a, b int) int`, an additional field `expected` is inserted to the test case struct.
 This field holds the value which the target function given the corresponding arguments returned.
-Also an assertion to check the equality between the expected value and the actual value computed in the test execution. This should be useful for regression testing.
+Also an assertion is put to check the equality between the expected value and the actual value computed in the test execution. This should be useful for regression testing.
 
 ```go
 // TestBar is a test for Bar(a, b int) int.
