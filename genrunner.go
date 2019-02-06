@@ -161,6 +161,18 @@ func generateRunnerAST(targetPackage *packages.Package, funcName string) (*ast.F
 					},
 				},
 			},
+			&ast.GenDecl{
+				Tok: token.IMPORT,
+				Specs: []ast.Spec{
+					&ast.ImportSpec{
+						Path: &ast.BasicLit{
+							Kind:  token.STRING,
+							Value: fmt.Sprintf("\"runtime\""),
+						},
+						Name: ast.NewIdent("_"),
+					},
+				},
+			},
 			runnerFuncDecl,
 		},
 	}, nil
