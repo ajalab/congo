@@ -33,27 +33,18 @@ func GenerateRunner(targetPackage *packages.Package, funcName string) (string, e
 	return runnerPackagePath, nil
 }
 
-// generateRunner generates a test runner file.
+// generateRunner generates the AST of a test runner.
+// The runner calls the target function declared in targetPackage.
 func generateRunnerAST(targetPackage *packages.Package, funcName string) (*ast.File, error) {
-	// Load the target package
-
-	// Get argument types of the function
+	// Get the signature of the target function
 	sig, err := getTargetFuncSig(targetPackage, funcName)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get argument types of the function")
+		return nil, errors.Wrapf(err, "failed to get the signature of %s", funcName)
 	}
 
-	results := sig.Results()
-	retValsLen := results.Len()
-	assertRetVals := make(map[*types.Var]struct{})
-	for i := 0; i < retValsLen; i++ {
-		v := results.At(i)
-		if _, ok := v.Type().(*types.Basic); ok {
-			assertRetVals[v] = struct{}{}
-		}
-	}
-
-	args := generateSymbolicArgs(sig)
+	// Generate AST of the function call to the target function
+	// targetPackage.targetFunc(arg0, arg1, ...)
+	args := generateSymbolASTs(sig)
 	funcCallExpr := &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   ast.NewIdent(targetPackage.Name),
@@ -61,53 +52,78 @@ func generateRunnerAST(targetPackage *packages.Package, funcName string) (*ast.F
 		},
 		Args: args,
 	}
-	var funcCallStmt ast.Stmt
-	var runnerFuncBody *ast.BlockStmt
-	if len(assertRetVals) == 0 {
-		funcCallStmt = &ast.ExprStmt{X: funcCallExpr}
-		runnerFuncBody = &ast.BlockStmt{List: []ast.Stmt{funcCallStmt}}
-	} else {
-		lhs := make([]ast.Expr, retValsLen)
-		var assertCond ast.Expr
-		for i := 0; i < retValsLen; i++ {
-			v := results.At(i)
-			if _, ok := assertRetVals[v]; ok {
-				name := v.Name()
-				if name == "" {
-					name = fmt.Sprintf("actual%d", i)
-				}
-				lhs[i] = ast.NewIdent(name)
 
-				cond := &ast.BinaryExpr{
-					X: ast.NewIdent(name),
-					Y: &ast.TypeAssertExpr{
-						X: &ast.IndexExpr{
-							X: &ast.SelectorExpr{
-								X:   ast.NewIdent("symbol"),
-								Sel: ast.NewIdent("RetVals"),
-							},
-							Index: &ast.BasicLit{
-								Kind:  token.INT,
-								Value: strconv.Itoa(i),
-							},
+	// Generate
+	// - LHS of the assignStmt that stores the results of the target function call
+	// - assert conditions
+	var lhs []ast.Expr
+	var assertCond ast.Expr
+	results := sig.Results()
+	retValsLen := results.Len()
+	assertResultsLen := 0
+	for i := 0; i < retValsLen; i++ {
+		v := results.At(i)
+		if _, ok := v.Type().(*types.Basic); ok {
+			name := v.Name()
+			if name == "" {
+				name = fmt.Sprintf("actual%d", assertResultsLen)
+			}
+			// actualN == symbol.RetVals[N].(type of actualN)
+			cond := &ast.BinaryExpr{
+				Op: token.EQL,
+				X:  ast.NewIdent(name),
+				Y: &ast.TypeAssertExpr{
+					X: &ast.IndexExpr{
+						X: &ast.SelectorExpr{
+							X: ast.NewIdent("symbol"),
+							// TODO(ajalab): Avoid hard coding
+							Sel: ast.NewIdent("RetVals"),
 						},
-						Type: type2ASTExpr(v.Type()),
+						Index: &ast.BasicLit{
+							Kind:  token.INT,
+							Value: strconv.Itoa(assertResultsLen),
+						},
 					},
-					Op: token.EQL,
-				}
-
-				if assertCond == nil {
-					assertCond = cond
-				} else {
-					assertCond = &ast.BinaryExpr{
-						X:  assertCond,
-						Y:  cond,
-						Op: token.LAND,
-					}
+					Type: type2ASTExpr(v.Type()),
+				},
+			}
+			// Conjunction
+			if assertCond == nil {
+				assertCond = cond
+			} else {
+				assertCond = &ast.BinaryExpr{
+					Op: token.LAND,
+					X:  assertCond,
+					Y:  cond,
 				}
 			}
+			lhs = append(lhs, ast.NewIdent(name))
+			assertResultsLen++
+		} else {
+			lhs = append(lhs, ast.NewIdent("_"))
 		}
-		funcCallStmt = &ast.AssignStmt{
+	}
+
+	// Generate the function body of a runner
+	var runnerFuncBody *ast.BlockStmt
+	if assertResultsLen == 0 {
+		// No assertions
+		// {
+		//      targetPackage.targetFunc(arg0, arg1, ...)
+		// }
+		funcCallStmt := &ast.ExprStmt{X: funcCallExpr}
+		runnerFuncBody = &ast.BlockStmt{List: []ast.Stmt{funcCallStmt}}
+	} else {
+		// Assertions exist
+		// {
+		//      actual0, actual1, ... := targetPackage.targetFunc(arg0, arg1, ...)
+		//      symbol.TestAssert(
+		//          actual0 == symbol.RetVals[0].(type of actual0) &&
+		//          actual1 == symbol.RetVals[1].(type of actual1) &&
+		//          ...
+		//      )
+		// }
+		funcCallStmt := &ast.AssignStmt{
 			Tok: token.DEFINE,
 			Lhs: lhs,
 			Rhs: []ast.Expr{funcCallExpr},
@@ -124,60 +140,37 @@ func generateRunnerAST(targetPackage *packages.Package, funcName string) (*ast.F
 		runnerFuncBody = &ast.BlockStmt{List: []ast.Stmt{funcCallStmt, assertStmt}}
 	}
 
+	// func main() {
+	//     (runnerFuncBody)
+	// }
 	runnerFuncDecl := &ast.FuncDecl{
 		Name: ast.NewIdent("main"),
 		Type: &ast.FuncType{},
 		Body: runnerFuncBody,
 	}
 
+	// Ties the runner function to the scope.
 	scope := ast.NewScope(nil)
 	runnerFuncDeclObj := ast.NewObj(ast.Fun, "main")
 	runnerFuncDeclObj.Decl = runnerFuncDecl
 	scope.Insert(runnerFuncDeclObj)
 
+	// We do not use parenthesized import declaration
+	// since it needs the valid Lparen position.
 	return &ast.File{
 		Scope: scope,
 		Name:  ast.NewIdent("main"),
 		Decls: []ast.Decl{
-			&ast.GenDecl{
-				Tok: token.IMPORT,
-				Specs: []ast.Spec{
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: fmt.Sprintf("\"%s\"", targetPackage.PkgPath),
-						},
-					},
-				},
-			},
-			&ast.GenDecl{
-				Tok: token.IMPORT,
-				Specs: []ast.Spec{
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: fmt.Sprintf("\"%s\"", congoSymbolPackagePath),
-						},
-					},
-				},
-			},
-			&ast.GenDecl{
-				Tok: token.IMPORT,
-				Specs: []ast.Spec{
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: fmt.Sprintf("\"runtime\""),
-						},
-						Name: ast.NewIdent("_"),
-					},
-				},
-			},
+			generateImportDeclAST("", targetPackage.PkgPath),
+			generateImportDeclAST("", congoSymbolPackagePath),
+			// runtime package is required to run by interp
+			generateImportDeclAST("_", "runtime"),
 			runnerFuncDecl,
 		},
 	}, nil
 }
 
+// Get the signature of the function that belongs to pkg
 func getTargetFuncSig(pkg *packages.Package, funcName string) (*types.Signature, error) {
 	targetFunc := pkg.Types.Scope().Lookup(funcName)
 	if targetFunc == nil {
@@ -186,14 +179,13 @@ func getTargetFuncSig(pkg *packages.Package, funcName string) (*types.Signature,
 	targetFuncType := targetFunc.Type()
 	sig, ok := targetFuncType.(*types.Signature)
 	if !ok {
-		// unreachable
 		return nil, errors.Errorf("%s is not a function", funcName)
 	}
 
 	return sig, nil
 }
 
-func generateSymbolicArgs(sig *types.Signature) []ast.Expr {
+func generateSymbolASTs(sig *types.Signature) []ast.Expr {
 	argTypes := sig.Params()
 	argLen := argTypes.Len()
 	var args []ast.Expr
@@ -215,4 +207,23 @@ func generateSymbolicArgs(sig *types.Signature) []ast.Expr {
 	}
 
 	return args
+}
+
+func generateImportDeclAST(name, path string) *ast.GenDecl {
+	var alias *ast.Ident
+	if name != "" {
+		alias = ast.NewIdent(name)
+	}
+	return &ast.GenDecl{
+		Tok: token.IMPORT,
+		Specs: []ast.Spec{
+			&ast.ImportSpec{
+				Path: &ast.BasicLit{
+					Kind:  token.STRING,
+					Value: fmt.Sprintf("\"%s\"", path),
+				},
+				Name: alias,
+			},
+		},
+	}
 }
