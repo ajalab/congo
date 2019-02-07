@@ -1,4 +1,4 @@
-package trace
+package solver
 
 import "golang.org/x/tools/go/ssa"
 
@@ -9,26 +9,26 @@ type Branch interface {
 	Instr() ssa.Instruction
 }
 
-// If contains a branching instruction (*ssa.If) and
+// BranchIf contains a branching instruction (*ssa.If) and
 // the direction taken in the concolic execution.
-type If struct {
+type BranchIf struct {
 	instr     *ssa.If
 	Direction bool
 }
 
 // Instr returns ssa.Instruction value for the branch.
-func (b *If) Instr() ssa.Instruction {
+func (b *BranchIf) Instr() ssa.Instruction {
 	return b.instr
 }
 
-// Cond returns ssa.Value that corresponds to the condition in the if statement
-func (b *If) Cond() ssa.Value {
-	return b.instr.Cond
+// Succs returns the succeeding blocks.
+func (b *BranchIf) Succs() []*ssa.BasicBlock {
+	return b.instr.Block().Succs
 }
 
-// Succs returns the succeeding blocks.
-func (b *If) Succs() []*ssa.BasicBlock {
-	return b.instr.Block().Succs
+// Cond returns ssa.Value that corresponds to the condition in the if statement
+func (b *BranchIf) Cond() ssa.Value {
+	return b.instr.Cond
 }
 
 // PanicNilPointerDeref represents a (panic) branching caused by nil pointer dereference.

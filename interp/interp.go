@@ -92,7 +92,6 @@ type interpreter struct {
 
 	congoTraceTarget *ssa.Function
 	congoTraceInstrs []ssa.Instruction
-	congoTraceBlocks []*ssa.BasicBlock
 	congoReturnValue interface{}
 	// TODO(ajalab) Use mutex to update congoTrace?
 	// congoMutex sync.Mutex
@@ -584,9 +583,6 @@ func runFrame(fr *frame) {
 		if fr.i.mode&EnableTracing != 0 {
 			fmt.Fprintf(os.Stderr, ".%s:\n", fr.block)
 		}
-		if tracing {
-			fr.i.congoTraceBlocks = append(fr.i.congoTraceBlocks, fr.block)
-		}
 	block:
 		for _, instr := range fr.block.Instrs {
 			if tracing {
@@ -699,7 +695,6 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 
 		congoTraceTarget: targetfunc,
 		congoTraceInstrs: make([]ssa.Instruction, 0),
-		congoTraceBlocks: make([]*ssa.BasicBlock, 0),
 	}
 
 	runtimePkg := i.prog.ImportedPackage("runtime")
@@ -780,7 +775,6 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 		result = &CongoInterpResult{
 			ExitCode:    exitCode,
 			Instrs:      i.congoTraceInstrs,
-			Blocks:      i.congoTraceBlocks,
 			ReturnValue: i.congoReturnValue,
 		}
 

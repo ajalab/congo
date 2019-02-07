@@ -41,6 +41,5 @@ func value2InterpValue(v interface{}, t types.Type) value {
 type CongoInterpResult struct {
 	ExitCode    int
 	Instrs      []ssa.Instruction
-	Blocks      []*ssa.BasicBlock
 	ReturnValue interface{}
 }

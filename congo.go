@@ -62,7 +62,8 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 		// Update the covered blocks.
 		nNewCoveredBlks := 0
-		for _, b := range result.Trace.Blocks() {
+		for _, instr := range result.Trace.Instrs() {
+			b := instr.Block()
 			if b.Parent() == prog.targetFunc {
 				if _, ok := covered[b]; !ok {
 					covered[b] = struct{}{}
@@ -95,7 +96,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		for j := len(branches) - 1; j >= 0; j-- {
 			branch := branches[j]
 			switch branch := branch.(type) {
-			case *trace.If:
+			case *solver.BranchIf:
 				succs := branch.Succs()
 				b := succs[0]
 				if branch.Direction {
@@ -106,7 +107,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				} else {
 					queueAfter = append(queueAfter, j)
 				}
-			case *trace.PanicNilPointerDeref:
+			case *solver.PanicNilPointerDeref:
 				queue = append(queue, j)
 			}
 		}
@@ -175,7 +176,6 @@ func (prog *Program) Run(values []interface{}) (*RunResult, error) {
 	return &RunResult{
 		Trace: trace.NewTrace(
 			interpResult.Instrs,
-			interpResult.Blocks,
 			interpResult.ExitCode == 0,
 		),
 		ReturnValues: interpResult.ReturnValue,

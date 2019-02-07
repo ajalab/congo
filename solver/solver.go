@@ -39,7 +39,7 @@ func z3MkStringSymbol(ctx C.Z3_context, s string) C.Z3_symbol {
 type Z3Solver struct {
 	asts      map[ssa.Value]C.Z3_ast
 	ctx       C.Z3_context
-	branches  []trace.Branch
+	branches  []Branch
 	symbols   []ssa.Value
 	datatypes map[string]z3Datatype
 	nonNil    map[ssa.Value]struct{}
@@ -206,12 +206,46 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 			s.nonNil[instr.X] = struct{}{}
 			s.asts[instr] = ref
 		}
-	}
-	for _, b := range tr.Branches() {
-		if s.hasBranchAST(b) {
-			s.branches = append(s.branches, b)
+		if ifInstr, ok := instr.(*ssa.If); ok {
+			if s.get(ifInstr.Cond) != nil {
+				thenBlock := instr.Block().Succs[0]
+				nextBlock := instrs[i+1].Block()
+				s.branches = append(s.branches, &BranchIf{
+					instr:     ifInstr,
+					Direction: thenBlock == nextBlock,
+				})
+			}
 		}
 	}
+	// Execution was stopped due to panic
+	if !isComplete {
+		causeInstr := instrs[len(instrs)-1]
+		switch instr := causeInstr.(type) {
+		case *ssa.UnOp:
+			s.branches = append(s.branches, &PanicNilPointerDeref{
+				instr: instr,
+				x:     instr.X,
+			})
+		case *ssa.FieldAddr:
+			s.branches = append(s.branches, &PanicNilPointerDeref{
+				instr: instr,
+				x:     instr.X,
+			})
+		default:
+			log.Fatalf("panic caused by %[1]v: %[1]T but not supported", instr)
+			panic("unreachable")
+		}
+	}
+}
+
+// NumBranches returns the number of branch instructions.
+func (s *Z3Solver) NumBranches() int {
+	return len(s.branches)
+}
+
+// Branch returns the i-th branch instruction.
+func (s *Z3Solver) Branch(i int) Branch {
+	return s.branches[i]
 }
 
 func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
@@ -480,24 +514,24 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (s *Z3Solver) hasBranchAST(branch trace.Branch) bool {
+func (s *Z3Solver) hasBranchAST(branch Branch) bool {
 	switch b := branch.(type) {
-	case *trace.If:
+	case *BranchIf:
 		return s.get(b.Cond()) != nil
-	case *trace.PanicNilPointerDeref:
+	case *PanicNilPointerDeref:
 		return s.get(b.X()) != nil
 	default:
 		panic("unimplemented")
 	}
 }
 
-func (s *Z3Solver) Branches() []trace.Branch {
+func (s *Z3Solver) Branches() []Branch {
 	return s.branches
 }
 
-func (s *Z3Solver) getBranchAST(branch trace.Branch, negate bool) (C.Z3_ast, error) {
+func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 	switch b := branch.(type) {
-	case *trace.If:
+	case *BranchIf:
 		cond := s.get(b.Cond())
 		if cond == nil {
 			return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v in %v",
@@ -509,7 +543,7 @@ func (s *Z3Solver) getBranchAST(branch trace.Branch, negate bool) (C.Z3_ast, err
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
 		return cond, nil
-	case *trace.PanicNilPointerDeref:
+	case *PanicNilPointerDeref:
 		pointer := b.X()
 		pointerAST := s.get(pointer)
 		if pointerAST == nil {
