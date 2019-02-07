@@ -169,9 +169,6 @@ func (prog *Program) Run(values []interface{}) (*RunResult, error) {
 		"",
 		[]string{},
 	)
-	if err != nil {
-		return nil, err
-	}
 
 	return &RunResult{
 		Trace: trace.NewTrace(
@@ -179,7 +176,7 @@ func (prog *Program) Run(values []interface{}) (*RunResult, error) {
 			interpResult.ExitCode == 0,
 		),
 		ReturnValues: interpResult.ReturnValue,
-	}, nil
+	}, err
 }
 
 // DumpRunnerAST dumps the runner AST file into dest.
