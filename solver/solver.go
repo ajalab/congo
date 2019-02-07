@@ -21,6 +21,8 @@ import (
 
 	"github.com/pkg/errors"
 	"golang.org/x/tools/go/ssa"
+
+	"github.com/ajalab/congo/trace"
 )
 
 const (
@@ -35,10 +37,9 @@ func z3MkStringSymbol(ctx C.Z3_context, s string) C.Z3_symbol {
 
 // Z3Solver is a type that holds the Z3 context, assertions, and symbols.
 type Z3Solver struct {
-	asts map[ssa.Value]C.Z3_ast
-	ctx  C.Z3_context
-
-	branches  []Branch
+	asts      map[ssa.Value]C.Z3_ast
+	ctx       C.Z3_context
+	branches  []trace.Branch
 	symbols   []ssa.Value
 	datatypes map[string]z3Datatype
 	nonNil    map[ssa.Value]struct{}
@@ -50,20 +51,29 @@ func goZ3ErrorHandler(ctx C.Z3_context, e C.Z3_error_code) {
 	panic("Z3 error occurred: " + C.GoString(msg))
 }
 
-// NewZ3Solver returns a new Z3Solver.
-func NewZ3Solver() *Z3Solver {
+// CreateZ3Solver returns a new Z3Solver.
+func CreateZ3Solver(symbols []ssa.Value, trace *trace.Trace) (*Z3Solver, error) {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
 
 	// TODO(ajalab): We may have to use Z3_mk_context_rc and manually handle the reference count.
 	ctx := C.Z3_mk_context(cfg)
 	C.Z3_set_error_handler(ctx, (*C.Z3_error_handler)(C.goZ3ErrorHandler))
-	return &Z3Solver{
+
+	s := &Z3Solver{
 		asts:      make(map[ssa.Value]C.Z3_ast),
 		ctx:       ctx,
 		datatypes: make(map[string]z3Datatype),
 		nonNil:    make(map[ssa.Value]struct{}),
 	}
+
+	err := s.loadSymbols(symbols)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load symbols")
+	}
+	s.loadTrace(trace)
+
+	return s, nil
 }
 
 // Close deletes the Z3 context.
@@ -71,18 +81,18 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-func (s *Z3Solver) addSymbol(name string, ty types.Type) C.Z3_ast {
+func (s *Z3Solver) getSymbolAST(name string, ty types.Type) C.Z3_ast {
 	z3Symbol := z3MkStringSymbol(s.ctx, name)
 	sort := newSort(s.ctx, ty, "", s.datatypes)
 	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
 }
 
-// LoadSymbols loads symbolic variables to the solver.
-func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
+// loadSymbols loads symbolic variables to the solver.
+func (s *Z3Solver) loadSymbols(symbols []ssa.Value) error {
 	s.symbols = make([]ssa.Value, len(symbols))
 	for i, value := range symbols {
 		z3SymbolName := fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, i)
-		ast := s.addSymbol(z3SymbolName, value.Type())
+		ast := s.getSymbolAST(z3SymbolName, value.Type())
 		if ast != nil {
 			s.asts[value] = ast
 		}
@@ -91,21 +101,24 @@ func (s *Z3Solver) LoadSymbols(symbols []ssa.Value) error {
 	return nil
 }
 
-// LoadTrace loads a running trace to the solver.
-func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
+// loadTrace loads a running trace to the solver.
+func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 	var currentBlock *ssa.BasicBlock
 	var prevBlock *ssa.BasicBlock
 	var callStack []*ssa.Call
 
+	instrs := tr.Instrs()
+	isComplete := tr.IsComplete()
+
 	// If the trace is not complete, ignore the last instruction,
 	// which is a cause of failure.
-	n := len(trace)
-	if !complete {
+	n := len(instrs)
+	if !isComplete {
 		n = n - 1
 	}
 
 	for i := 0; i < n; i++ {
-		instr := trace[i]
+		instr := instrs[i]
 		block := instr.Block()
 		if currentBlock != block {
 			prevBlock = currentBlock
@@ -141,14 +154,14 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 			switch fn := instr.Call.Value.(type) {
 			case *ssa.Function:
 				// Is the called function recorded?
-				if i < len(trace)-1 && trace[i+1].Parent() == fn {
+				if i < len(instrs)-1 && instrs[i+1].Parent() == fn {
 					for j, arg := range instr.Call.Args {
 						log.Printf("call %v param%d %v <- %v", fn, j, fn.Params[j], arg)
 						s.asts[fn.Params[j]] = s.get(arg)
 					}
 					callStack = append(callStack, instr)
 				} else {
-					log.Printf("ignored function call %v (trace[i + 1]) = %v", instr, trace[i+1])
+					log.Printf("ignored function call %v (trace[i + 1]) = %v", instr, instrs[i+1])
 				}
 			case *ssa.Builtin:
 				switch fn.Name() {
@@ -193,46 +206,12 @@ func (s *Z3Solver) LoadTrace(trace []ssa.Instruction, complete bool) {
 			s.nonNil[instr.X] = struct{}{}
 			s.asts[instr] = ref
 		}
-		if ifInstr, ok := instr.(*ssa.If); ok {
-			if s.get(ifInstr.Cond) != nil {
-				thenBlock := instr.Block().Succs[0]
-				nextBlock := trace[i+1].Block()
-				s.branches = append(s.branches, &BranchIf{
-					instr:     ifInstr,
-					Direction: thenBlock == nextBlock,
-				})
-			}
+	}
+	for _, b := range tr.Branches() {
+		if s.hasBranchAST(b) {
+			s.branches = append(s.branches, b)
 		}
 	}
-	// Execution was stopped due to panic
-	if !complete {
-		causeInstr := trace[len(trace)-1]
-		switch instr := causeInstr.(type) {
-		case *ssa.UnOp:
-			s.branches = append(s.branches, &PanicNilPointerDeref{
-				instr: instr,
-				x:     instr.X,
-			})
-		case *ssa.FieldAddr:
-			s.branches = append(s.branches, &PanicNilPointerDeref{
-				instr: instr,
-				x:     instr.X,
-			})
-		default:
-			log.Fatalf("panic caused by %[1]v: %[1]T but not supported", instr)
-			panic("unreachable")
-		}
-	}
-}
-
-// NumBranches returns the number of branch instructions.
-func (s *Z3Solver) NumBranches() int {
-	return len(s.branches)
-}
-
-// Branch returns the i-th branch instruction.
-func (s *Z3Solver) Branch(i int) Branch {
-	return s.branches[i]
 }
 
 func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
@@ -501,24 +480,42 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
+func (s *Z3Solver) hasBranchAST(branch trace.Branch) bool {
 	switch b := branch.(type) {
-	case *BranchIf:
-		cond := s.get(b.instr.Cond)
+	case *trace.If:
+		return s.get(b.Cond()) != nil
+	case *trace.PanicNilPointerDeref:
+		return s.get(b.X()) != nil
+	default:
+		panic("unimplemented")
+	}
+}
+
+func (s *Z3Solver) Branches() []trace.Branch {
+	return s.branches
+}
+
+func (s *Z3Solver) getBranchAST(branch trace.Branch, negate bool) (C.Z3_ast, error) {
+	switch b := branch.(type) {
+	case *trace.If:
+		cond := s.get(b.Cond())
 		if cond == nil {
-			return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v", branch.Instr())
+			return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v in %v",
+				branch.Instr(),
+				b.Instr().Parent(),
+			)
 		}
 		if (!negate && !b.Direction) || (negate && b.Direction) {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
 		return cond, nil
-	case *PanicNilPointerDeref:
-		pointer := b.x
-		pointerTy := pointer.Type().(*types.Pointer)
+	case *trace.PanicNilPointerDeref:
+		pointer := b.X()
 		pointerAST := s.get(pointer)
 		if pointerAST == nil {
 			return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", pointer)
 		}
+		pointerTy := pointer.Type().(*types.Pointer)
 		pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
 		cond := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &pointerAST)
 		if negate {
@@ -537,6 +534,7 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 	solver := C.Z3_mk_solver(s.ctx)
 	C.Z3_solver_inc_ref(s.ctx, solver)
 	defer C.Z3_solver_dec_ref(s.ctx, solver)
+
 	for i := 0; i < negate; i++ {
 		branch := s.branches[i]
 		cond, err := s.getBranchAST(branch, false)

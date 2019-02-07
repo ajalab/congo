@@ -1,4 +1,4 @@
-package solver
+package trace
 
 import "golang.org/x/tools/go/ssa"
 
@@ -9,20 +9,25 @@ type Branch interface {
 	Instr() ssa.Instruction
 }
 
-// BranchIf contains a branching instruction (*ssa.If) and
+// If contains a branching instruction (*ssa.If) and
 // the direction taken in the concolic execution.
-type BranchIf struct {
+type If struct {
 	instr     *ssa.If
 	Direction bool
 }
 
 // Instr returns ssa.Instruction value for the branch.
-func (b *BranchIf) Instr() ssa.Instruction {
+func (b *If) Instr() ssa.Instruction {
 	return b.instr
 }
 
+// Cond returns ssa.Value that corresponds to the condition in the if statement
+func (b *If) Cond() ssa.Value {
+	return b.instr.Cond
+}
+
 // Succs returns the succeeding blocks.
-func (b *BranchIf) Succs() []*ssa.BasicBlock {
+func (b *If) Succs() []*ssa.BasicBlock {
 	return b.instr.Block().Succs
 }
 
@@ -35,4 +40,9 @@ type PanicNilPointerDeref struct {
 // Instr returns ssa.Instruction value for the branch.
 func (p *PanicNilPointerDeref) Instr() ssa.Instruction {
 	return p.instr
+}
+
+// X returns ssa.Value that was dereferenced.
+func (p *PanicNilPointerDeref) X() ssa.Value {
+	return p.x
 }

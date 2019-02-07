@@ -11,6 +11,7 @@ import (
 
 	"github.com/ajalab/congo/interp"
 	"github.com/ajalab/congo/solver"
+	"github.com/ajalab/congo/trace"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -26,6 +27,13 @@ type Program struct {
 	congoSymbolPackage *ssa.Package
 	targetFunc         *ssa.Function
 	symbols            []ssa.Value
+}
+
+// RunResult contains a running trace and information such as
+// whether it is a complete trace without panic.
+type RunResult struct {
+	Trace        *trace.Trace
+	ReturnValues interface{}
 }
 
 // Execute executes concolic execution.
@@ -54,8 +62,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 		// Update the covered blocks.
 		nNewCoveredBlks := 0
-		for _, instr := range result.Trace {
-			b := instr.Block()
+		for _, b := range result.Trace.Blocks() {
 			if b.Parent() == prog.targetFunc {
 				if _, ok := covered[b]; !ok {
 					covered[b] = struct{}{}
@@ -63,10 +70,10 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				}
 			}
 		}
-		// Record the symbol values if new blocks are covered.
+		// Record the concrete values if new blocks are covered.
 		if nNewCoveredBlks > 0 {
 			symbolValues = append(symbolValues, values)
-			returnValues = append(returnValues, result.ReturnValue)
+			returnValues = append(returnValues, result.ReturnValues)
 		}
 
 		// Compute the coverage and exit if it exceeds the minCoverage.
@@ -78,17 +85,17 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			break
 		}
 
-		z3Solver := solver.NewZ3Solver()
-		err = z3Solver.LoadSymbols(prog.symbols)
+		z3Solver, err := solver.CreateZ3Solver(prog.symbols, result.Trace)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to load symbols")
+			return nil, errors.Wrap(err, "failed to create a solver")
 		}
-		z3Solver.LoadTrace(result.Trace, result.ExitCode == 0)
+
+		branches := z3Solver.Branches()
 		queue, queueAfter := make([]int, 0), make([]int, 0)
-		for j := z3Solver.NumBranches() - 1; j >= 0; j-- {
-			branch := z3Solver.Branch(j)
+		for j := len(branches) - 1; j >= 0; j-- {
+			branch := branches[j]
 			switch branch := branch.(type) {
-			case *solver.BranchIf:
+			case *trace.If:
 				succs := branch.Succs()
 				b := succs[0]
 				if branch.Direction {
@@ -99,7 +106,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				} else {
 					queueAfter = append(queueAfter, j)
 				}
-			case *solver.PanicNilPointerDeref:
+			case *trace.PanicNilPointerDeref:
 				queue = append(queue, j)
 			}
 		}
@@ -140,7 +147,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 }
 
 // Run runs the program by the interpreter provided by interp module.
-func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error) {
+func (prog *Program) Run(values []interface{}) (*RunResult, error) {
 	n := len(values)
 	symbolValues := make([]interp.SymbolicValue, n)
 	for i, symbol := range prog.symbols {
@@ -152,14 +159,27 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 
 	interp.CapturedOutput = new(bytes.Buffer)
 	mode := interp.DisableRecover // interp.EnableTracing
-	return interp.Interpret(
+	interpResult, err := interp.Interpret(
 		prog.runnerPackage,
 		prog.targetFunc,
 		symbolValues,
 		mode,
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},
 		"",
-		[]string{})
+		[]string{},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RunResult{
+		Trace: trace.NewTrace(
+			interpResult.Instrs,
+			interpResult.Blocks,
+			interpResult.ExitCode == 0,
+		),
+		ReturnValues: interpResult.ReturnValue,
+	}, nil
 }
 
 // DumpRunnerAST dumps the runner AST file into dest.
