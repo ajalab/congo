@@ -83,8 +83,13 @@ func (s *Z3Solver) Close() {
 
 func (s *Z3Solver) getSymbolAST(name string, ty types.Type) C.Z3_ast {
 	z3Symbol := z3MkStringSymbol(s.ctx, name)
-	sort := newSort(s.ctx, ty, "", s.datatypes)
-	return C.Z3_mk_const(s.ctx, z3Symbol, sort)
+	switch ty := ty.(type) {
+	case *types.Basic:
+		sort := newBasicSort(s.ctx, ty)
+		return C.Z3_mk_const(s.ctx, z3Symbol, sort)
+	}
+	log.Fatalf("unsupported type: %[1]v: %[1]T", ty)
+	panic("unimplemented")
 }
 
 // loadSymbols loads symbolic variables to the solver.
@@ -191,20 +196,22 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 			}
 		case *ssa.FieldAddr:
 			// &((*pstruct).field)
-			k := instr.Field
-			tyPStruct := instr.X.Type().Underlying().(*types.Pointer) //.Elem()
-			tyElem := tyPStruct.Elem()
-			tyStruct := tyElem.Underlying().(*types.Struct)
-			tyPField := instr.Type().(*types.Pointer)
-			pointerStructDT := getPointerDatatype(s.ctx, tyPStruct, s.datatypes)
-			pointerFieldDT := getPointerDatatype(s.ctx, tyPField, s.datatypes)
-			structDT := getStructDatatype(s.ctx, tyStruct, tyElem.String(), s.datatypes)
-			ast := s.get(instr.X)
-			deref := C.Z3_mk_app(s.ctx, pointerStructDT.refAcc, 1, &ast)
-			acc := C.Z3_mk_app(s.ctx, structDT.accessors[k], 1, &deref)
-			ref := C.Z3_mk_app(s.ctx, pointerFieldDT.refDecl, 1, &acc)
-			s.nonNil[instr.X] = struct{}{}
-			s.asts[instr] = ref
+			/*
+				k := instr.Field
+				tyPStruct := instr.X.Type().Underlying().(*types.Pointer) //.Elem()
+				tyElem := tyPStruct.Elem()
+				tyStruct := tyElem.Underlying().(*types.Struct)
+				tyPField := instr.Type().(*types.Pointer)
+				pointerStructDT := getPointerDatatype(s.ctx, tyPStruct, s.datatypes)
+				pointerFieldDT := getPointerDatatype(s.ctx, tyPField, s.datatypes)
+				structDT := getStructDatatype(s.ctx, tyStruct, tyElem.String(), s.datatypes)
+				ast := s.get(instr.X)
+				deref := C.Z3_mk_app(s.ctx, pointerStructDT.refAcc, 1, &ast)
+				acc := C.Z3_mk_app(s.ctx, structDT.accessors[k], 1, &deref)
+				ref := C.Z3_mk_app(s.ctx, pointerFieldDT.refDecl, 1, &acc)
+				s.nonNil[instr.X] = struct{}{}
+				s.asts[instr] = ref
+			*/
 		}
 		if ifInstr, ok := instr.(*ssa.If); ok {
 			if s.get(ifInstr.Cond) != nil {
@@ -419,19 +426,21 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		return C.Z3_mk_bvneg(s.ctx, x), nil
 	case token.NOT:
 		return C.Z3_mk_not(s.ctx, x), nil
-	case token.MUL:
-		pointer := instr.X
-		pointerTy := pointer.Type().(*types.Pointer)
-		pointerAST := s.get(pointer)
-		if pointerAST == nil {
-			return nil, errors.Errorf("corresponding AST for pointer was not found: %v", pointer)
-		}
-		pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
-		ref := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &pointerAST)
-		s.nonNil[pointer] = struct{}{}
-		return ref, nil
-		// case token.XOR:
-		// case token.ARROW:
+		/*
+			case token.MUL:
+				pointer := instr.X
+				pointerTy := pointer.Type().(*types.Pointer)
+				pointerAST := s.get(pointer)
+				if pointerAST == nil {
+					return nil, errors.Errorf("corresponding AST for pointer was not found: %v", pointer)
+				}
+				pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
+				ref := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &pointerAST)
+				s.nonNil[pointer] = struct{}{}
+				return ref, nil
+				// case token.XOR:
+				// case token.ARROW:
+		*/
 	}
 	return nil, errors.Errorf("unop: not implemented: %v", instr)
 }
@@ -544,6 +553,7 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 		}
 		return cond, nil
 	case *PanicNilPointerDeref:
+		/*
 		pointer := b.X()
 		pointerAST := s.get(pointer)
 		if pointerAST == nil {
@@ -556,6 +566,9 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
 		return cond, nil
+		*/
+		return C.Z3_mk_true(s.ctx), nil
+
 	default:
 		panic("unimplemented")
 	}
@@ -584,11 +597,13 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 		return nil, errors.Wrap(err, "failed to solve constraints")
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
-	for v := range s.nonNil {
-		ast := s.get(v)
-		pointerDT := getPointerDatatype(s.ctx, v.Type().(*types.Pointer), s.datatypes)
-		C.Z3_solver_assert(s.ctx, solver, C.Z3_mk_app(s.ctx, pointerDT.isRef, 1, &ast))
-	}
+	/*
+		for v := range s.nonNil {
+			ast := s.get(v)
+			pointerDT := getPointerDatatype(s.ctx, v.Type().(*types.Pointer), s.datatypes)
+			C.Z3_solver_assert(s.ctx, solver, C.Z3_mk_app(s.ctx, pointerDT.isRef, 1, &ast))
+		}
+	*/
 
 	fmt.Fprintf(os.Stderr, "solver\n%s\n", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
@@ -694,46 +709,50 @@ func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interf
 				b := C.Z3_get_bool_value(s.ctx, ast)
 				return b == C.Z3_L_TRUE, nil
 			}
-		case *types.Pointer:
-			pointerDT := getPointerDatatype(s.ctx, ty, s.datatypes)
-			isNilQuery := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &ast)
-			var isNilResAST C.Z3_ast
-			ok := C.Z3_model_eval(s.ctx, m, isNilQuery, C.bool(true), &isNilResAST)
-			if !C.bool(ok) {
-				return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, isNilQuery)))
-			}
-			isNil := C.Z3_get_bool_value(s.ctx, isNilResAST) == C.Z3_L_TRUE
-			if isNil {
-				return nil, nil
-			}
+			/*
+				case *types.Pointer:
+					pointerDT := getPointerDatatype(s.ctx, ty, s.datatypes)
+					isNilQuery := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &ast)
+					var isNilResAST C.Z3_ast
+					ok := C.Z3_model_eval(s.ctx, m, isNilQuery, C.bool(true), &isNilResAST)
+					if !C.bool(ok) {
+						return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, isNilQuery)))
+					}
+					isNil := C.Z3_get_bool_value(s.ctx, isNilResAST) == C.Z3_L_TRUE
+					if isNil {
+						return nil, nil
+					}
 
-			// the pointer points to another value
-			accQuery := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &ast)
-			var accResAST C.Z3_ast
-			ok = C.Z3_model_eval(s.ctx, m, accQuery, C.bool(true), &accResAST)
-			if !C.bool(ok) {
-				return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, accQuery)))
-			}
-			v, err := s.astToValue(m, accResAST, ty.Elem())
-			return &v, err
-		case *types.Struct:
-			n := ty.NumFields()
-			structDT := getStructDatatype(s.ctx, ty, "", s.datatypes)
-			result := make([]interface{}, n)
-			for i := 0; i < n; i++ {
-				query := C.Z3_mk_app(s.ctx, structDT.accessors[i], 1, &ast)
-				var r C.Z3_ast
-				ok := C.Z3_model_eval(s.ctx, m, query, C.bool(true), &r)
-				if !C.bool(ok) {
-					return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, query)))
-				}
-				v, err := s.astToValue(m, r, ty.Field(i).Type())
-				if err != nil {
-					return nil, errors.Errorf("failed to access field %v [#%d] of %v", ty.Field(i), i, ty)
-				}
-				result[i] = v
-			}
-			return result, nil
+					// the pointer points to another value
+					accQuery := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &ast)
+					var accResAST C.Z3_ast
+					ok = C.Z3_model_eval(s.ctx, m, accQuery, C.bool(true), &accResAST)
+					if !C.bool(ok) {
+						return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, accQuery)))
+					}
+					v, err := s.astToValue(m, accResAST, ty.Elem())
+					return &v, err
+			*/
+			/*
+				case *types.Struct:
+					n := ty.NumFields()
+					structDT := getStructDatatype(s.ctx, ty, "", s.datatypes)
+					result := make([]interface{}, n)
+					for i := 0; i < n; i++ {
+						query := C.Z3_mk_app(s.ctx, structDT.accessors[i], 1, &ast)
+						var r C.Z3_ast
+						ok := C.Z3_model_eval(s.ctx, m, query, C.bool(true), &r)
+						if !C.bool(ok) {
+							return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, query)))
+						}
+						v, err := s.astToValue(m, r, ty.Field(i).Type())
+						if err != nil {
+							return nil, errors.Errorf("failed to access field %v [#%d] of %v", ty.Field(i), i, ty)
+						}
+						result[i] = v
+					}
+					return result, nil
+			*/
 		}
 		return nil, errors.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
 	}
