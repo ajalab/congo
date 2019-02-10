@@ -37,12 +37,11 @@ func z3MkStringSymbol(ctx C.Z3_context, s string) C.Z3_symbol {
 
 // Z3Solver is a type that holds the Z3 context, assertions, and symbols.
 type Z3Solver struct {
-	asts      map[ssa.Value]C.Z3_ast
-	ctx       C.Z3_context
-	branches  []Branch
-	symbols   []ssa.Value
-	datatypes map[string]z3Datatype
-	nonNil    map[ssa.Value]struct{}
+	asts     map[ssa.Value]C.Z3_ast
+	refs     map[ssa.Value]ssa.Value
+	ctx      C.Z3_context
+	branches []Branch
+	symbols  []ssa.Value
 }
 
 //export goZ3ErrorHandler
@@ -61,10 +60,8 @@ func CreateZ3Solver(symbols []ssa.Value, trace *trace.Trace) (*Z3Solver, error) 
 	C.Z3_set_error_handler(ctx, (*C.Z3_error_handler)(C.goZ3ErrorHandler))
 
 	s := &Z3Solver{
-		asts:      make(map[ssa.Value]C.Z3_ast),
-		ctx:       ctx,
-		datatypes: make(map[string]z3Datatype),
-		nonNil:    make(map[ssa.Value]struct{}),
+		asts: make(map[ssa.Value]C.Z3_ast),
+		ctx:  ctx,
 	}
 
 	err := s.loadSymbols(symbols)
@@ -81,26 +78,48 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
+/*
 func (s *Z3Solver) getSymbolAST(name string, ty types.Type) C.Z3_ast {
 	z3Symbol := z3MkStringSymbol(s.ctx, name)
 	switch ty := ty.(type) {
 	case *types.Basic:
 		sort := newBasicSort(s.ctx, ty)
 		return C.Z3_mk_const(s.ctx, z3Symbol, sort)
+	case *types.Pointer:
+
 	}
 	log.Fatalf("unsupported type: %[1]v: %[1]T", ty)
 	panic("unimplemented")
+}
+*/
+
+func (s *Z3Solver) loadSymbol(symbol ssa.Value, name string) {
+	ty := symbol.Type()
+	z3Symbol := z3MkStringSymbol(s.ctx, name)
+	switch ty := ty.(type) {
+	case *types.Basic:
+		sort := newBasicSort(s.ctx, ty)
+		ast := C.Z3_mk_const(s.ctx, z3Symbol, sort)
+		s.asts[symbol] = ast
+	case *types.Pointer:
+		// ast represents a pointer value
+		sort := C.Z3_mk_int_sort(s.ctx)
+		ast := C.Z3_mk_const(s.ctx, z3Symbol, sort)
+		s.asts[symbol] = ast
+
+		ref := &Ref{symbol}
+		s.refs[symbol] = ref
+		s.loadSymbol(ref, "*"+name)
+	}
 }
 
 // loadSymbols loads symbolic variables to the solver.
 func (s *Z3Solver) loadSymbols(symbols []ssa.Value) error {
 	s.symbols = make([]ssa.Value, len(symbols))
-	for i, value := range symbols {
-		z3SymbolName := fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, i)
-		ast := s.getSymbolAST(z3SymbolName, value.Type())
-		if ast != nil {
-			s.asts[value] = ast
-		}
+	for i, symbol := range symbols {
+		// TODO(ajalab): rename
+		name := fmt.Sprintf("%s%d", z3SymbolPrefixForSymbol, i)
+		s.loadSymbol(symbol, name)
 	}
 	copy(s.symbols, symbols)
 	return nil
@@ -428,21 +447,24 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		return C.Z3_mk_bvneg(s.ctx, x), nil
 	case token.NOT:
 		return C.Z3_mk_not(s.ctx, x), nil
+	case token.MUL:
+		// TODO(ajalab): existance check
+		ref := s.refs[instr.X]
+		return s.get(ref), nil
 		/*
-			case token.MUL:
-				pointer := instr.X
-				pointerTy := pointer.Type().(*types.Pointer)
-				pointerAST := s.get(pointer)
-				if pointerAST == nil {
-					return nil, errors.Errorf("corresponding AST for pointer was not found: %v", pointer)
-				}
-				pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
-				ref := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &pointerAST)
-				s.nonNil[pointer] = struct{}{}
-				return ref, nil
-				// case token.XOR:
-				// case token.ARROW:
+			pointer := instr.X
+			pointerTy := pointer.Type().(*types.Pointer)
+			pointerAST := s.get(pointer)
+			if pointerAST == nil {
+				return nil, errors.Errorf("corresponding AST for pointer was not found: %v", pointer)
+			}
+			pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
+			ref := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &pointerAST)
+			s.nonNil[pointer] = struct{}{}
+			return ref, nil
 		*/
+		// case token.XOR:
+		// case token.ARROW:
 	}
 	return nil, errors.Errorf("unop: not implemented: %v", instr)
 }
@@ -525,6 +547,7 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 	panic("unimplemented")
 }
 
+/*
 func (s *Z3Solver) hasBranchAST(branch Branch) bool {
 	switch b := branch.(type) {
 	case *BranchIf:
@@ -535,6 +558,7 @@ func (s *Z3Solver) hasBranchAST(branch Branch) bool {
 		panic("unimplemented")
 	}
 }
+*/
 
 func (s *Z3Solver) Branches() []Branch {
 	return s.branches
@@ -556,18 +580,18 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 		return cond, nil
 	case *BranchDeref:
 		/*
-		pointer := b.X()
-		pointerAST := s.get(pointer)
-		if pointerAST == nil {
-			return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", pointer)
-		}
-		pointerTy := pointer.Type().(*types.Pointer)
-		pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
-		cond := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &pointerAST)
-		if negate {
-			cond = C.Z3_mk_not(s.ctx, cond)
-		}
-		return cond, nil
+			pointer := b.X()
+			pointerAST := s.get(pointer)
+			if pointerAST == nil {
+				return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", pointer)
+			}
+			pointerTy := pointer.Type().(*types.Pointer)
+			pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
+			cond := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &pointerAST)
+			if negate {
+				cond = C.Z3_mk_not(s.ctx, cond)
+			}
+			return cond, nil
 		*/
 		return C.Z3_mk_true(s.ctx), nil
 
