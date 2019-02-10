@@ -61,6 +61,7 @@ func CreateZ3Solver(symbols []ssa.Value, trace *trace.Trace) (*Z3Solver, error) 
 
 	s := &Z3Solver{
 		asts: make(map[ssa.Value]C.Z3_ast),
+		refs: make(map[ssa.Value]ssa.Value),
 		ctx:  ctx,
 	}
 
@@ -158,7 +159,6 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 				log.Println(err)
 			}
 		case *ssa.BinOp:
-			// TODO(ajalab) handle errors
 			var err error
 			s.asts[instr], err = s.binop(instr)
 			if err != nil {
@@ -542,8 +542,13 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 		case info&types.IsString > 0:
 			return C.Z3_mk_string(s.ctx, C.CString(constant.StringVal(v.Value)))
 		}
+	case *types.Pointer:
+		if v.Value == nil {
+			sort := C.Z3_mk_int_sort(s.ctx)
+			return C.Z3_mk_unsigned_int(s.ctx, C.uint(0), sort)
+		}
 	}
-	log.Fatalln("getConstAST: Unimplemented const value", v)
+	log.Fatalf("getConstAST: Unimplemented const value %v: %T", v, v.Type())
 	panic("unimplemented")
 }
 
@@ -579,21 +584,17 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 		}
 		return cond, nil
 	case *BranchDeref:
-		/*
-			pointer := b.X()
-			pointerAST := s.get(pointer)
-			if pointerAST == nil {
-				return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", pointer)
-			}
-			pointerTy := pointer.Type().(*types.Pointer)
-			pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
-			cond := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &pointerAST)
-			if negate {
-				cond = C.Z3_mk_not(s.ctx, cond)
-			}
-			return cond, nil
-		*/
-		return C.Z3_mk_true(s.ctx), nil
+		pointer := s.get(b.x)
+		if pointer == nil {
+			return nil, errors.Errorf("corresponding AST for pointer dereference was not found: %+v", b.x)
+		}
+		sort := C.Z3_mk_int_sort(s.ctx)
+		zero := C.Z3_mk_unsigned_int(s.ctx, C.uint(0), sort)
+		cond := C.Z3_mk_eq(s.ctx, pointer, zero)
+		if b.success {
+			cond = C.Z3_mk_not(s.ctx, cond)
+		}
+		return cond, nil
 
 	default:
 		panic("unimplemented")
@@ -667,67 +668,77 @@ func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	return values, nil
 }
 
-func (s *Z3Solver) getValueFromModel(m C.Z3_model, v ssa.Value) (interface{}, error) {
-		var result C.Z3_ast
+func (s *Z3Solver) getASTFromModel(m C.Z3_model, v ssa.Value) (C.Z3_ast, error) {
+	var result C.Z3_ast
 	ast := s.asts[v]
-		ok := C.Z3_model_eval(s.ctx, m, ast, C.bool(true), &result)
-		if !C.bool(ok) {
+	ok := C.Z3_model_eval(s.ctx, m, ast, C.bool(true), &result)
+	if !C.bool(ok) {
 		return nil, errors.Errorf("failed to extract a concrete AST for %v from the model", v)
-		}
-	value, err := s.astToValue(m, result, v.Type())
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
-		}
-	return value, nil
 	}
+	return result, nil
+}
 
-func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interface{}, error) {
-	kind := C.Z3_get_ast_kind(s.ctx, ast)
-	// Dereference for named types
-	ty = ty.Underlying()
-
+func (s *Z3Solver) getValueFromModel(m C.Z3_model, v ssa.Value) (interface{}, error) {
+	ast, err := s.getASTFromModel(m, v)
+	if err != nil {
+		return nil, err
+	}
+	ty := v.Type().Underlying()
 	switch ty := ty.(type) {
 	case *types.Basic:
 		info := ty.Info()
 		switch {
 		case info&types.IsInteger > 0:
-		var u C.uint64_t
+			var u C.uint64_t
 			if ok := bool(C.Z3_get_numeral_uint64(s.ctx, ast, &u)); !ok {
-			return nil, errors.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
-		}
+				return nil, errors.Errorf("Z3_get_numeral_uint64: could not get an uint64 representation of the AST")
+			}
 			switch ty.Kind() {
-		case types.Int:
-			return int(u), nil
-		case types.Int8:
-			return int8(u), nil
-		case types.Int16:
-			return int16(u), nil
-		case types.Int32:
-			return int32(u), nil
-		case types.Int64:
-			return int64(u), nil
-		case types.Uint:
-			return uint(u), nil
-		case types.Uint8:
-			return uint8(u), nil
-		case types.Uint16:
-			return uint16(u), nil
-		case types.Uint32:
-			return uint32(u), nil
-		case types.Uint64:
-			return uint64(u), nil
-		}
+			case types.Int:
+				return int(u), nil
+			case types.Int8:
+				return int8(u), nil
+			case types.Int16:
+				return int16(u), nil
+			case types.Int32:
+				return int32(u), nil
+			case types.Int64:
+				return int64(u), nil
+			case types.Uint:
+				return uint(u), nil
+			case types.Uint8:
+				return uint8(u), nil
+			case types.Uint16:
+				return uint16(u), nil
+			case types.Uint32:
+				return uint32(u), nil
+			case types.Uint64:
+				return uint64(u), nil
+			}
 		case info&types.IsBoolean > 0:
 			b := C.Z3_get_bool_value(s.ctx, ast)
 			return b == C.Z3_L_TRUE, nil
 		case info&types.IsString > 0:
-				s, _ := strconv.Unquote(fmt.Sprintf(`"%s"`, C.GoString(C.Z3_get_string(s.ctx, ast))))
-				return s, nil
-			}
-				case *types.Pointer:
-					}
+			s, _ := strconv.Unquote(fmt.Sprintf(`"%s"`, C.GoString(C.Z3_get_string(s.ctx, ast))))
+			return s, nil
+		}
+	case *types.Pointer:
+		var i C.int
+		if ok := bool(C.Z3_get_numeral_int(s.ctx, ast, &i)); !ok {
+			return nil, errors.Errorf("Z3_get_numeral_int: could not get a uint64 representation of the AST")
+		}
+		pointerRegion := int(i)
+		switch pointerRegion {
+		case 0:
+			return nil, nil
+		case 1:
+			ref := s.refs[v]
+			v, err := s.getValueFromModel(m, ref)
+			return &v, err
+		}
+	}
 
-	return nil, errors.Errorf("cannot convert Z3_AST (kind: %d) of type %s", kind, ty)
+	return nil, errors.Errorf("type %v is not supported", ty)
 }
 
 func sizeOfBasicKind(k types.BasicKind) uint {
