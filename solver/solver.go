@@ -658,38 +658,44 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	values := make([]interface{}, len(s.symbols))
 	for i, symbol := range s.symbols {
-		var result C.Z3_ast
-		ast := s.asts[symbol]
-		ok := C.Z3_model_eval(s.ctx, m, ast, C.bool(true), &result)
-		if !C.bool(ok) {
-			return nil, errors.Errorf("failed to get symbol[%d] from the model", i)
-		}
-		v, err := s.astToValue(m, result, symbol.Type())
+		var err error
+		values[i], err = s.getValueFromModel(m, symbol)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
+			return nil, errors.Wrapf(err, "failed to get a value for the symbol[%d]", i)
 		}
-		values[i] = v
 	}
 	return values, nil
 }
+
+func (s *Z3Solver) getValueFromModel(m C.Z3_model, v ssa.Value) (interface{}, error) {
+		var result C.Z3_ast
+	ast := s.asts[v]
+		ok := C.Z3_model_eval(s.ctx, m, ast, C.bool(true), &result)
+		if !C.bool(ok) {
+		return nil, errors.Errorf("failed to extract a concrete AST for %v from the model", v)
+		}
+	value, err := s.astToValue(m, result, v.Type())
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
+		}
+	return value, nil
+	}
 
 func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interface{}, error) {
 	kind := C.Z3_get_ast_kind(s.ctx, ast)
 	// Dereference for named types
 	ty = ty.Underlying()
 
-	switch kind {
-	case C.Z3_NUMERAL_AST:
-		basicTy, ok := ty.(*types.Basic)
-		if !ok {
-			return nil, errors.Errorf("illegal type")
-		}
+	switch ty := ty.(type) {
+	case *types.Basic:
+		info := ty.Info()
+		switch {
+		case info&types.IsInteger > 0:
 		var u C.uint64_t
-		ok = bool(C.Z3_get_numeral_uint64(s.ctx, ast, &u))
-		if !ok {
+			if ok := bool(C.Z3_get_numeral_uint64(s.ctx, ast, &u)); !ok {
 			return nil, errors.Errorf("Z3_get_numeral_uint64: could not get a uint64 representation of the AST")
 		}
-		switch basicTy.Kind() {
+			switch ty.Kind() {
 		case types.Int:
 			return int(u), nil
 		case types.Int8:
@@ -711,64 +717,16 @@ func (s *Z3Solver) astToValue(m C.Z3_model, ast C.Z3_ast, ty types.Type) (interf
 		case types.Uint64:
 			return uint64(u), nil
 		}
-	case C.Z3_APP_AST:
-		switch ty := ty.(type) {
-		case *types.Basic:
-			switch ty.Kind() {
-			case types.String:
+		case info&types.IsBoolean > 0:
+			b := C.Z3_get_bool_value(s.ctx, ast)
+			return b == C.Z3_L_TRUE, nil
+		case info&types.IsString > 0:
 				s, _ := strconv.Unquote(fmt.Sprintf(`"%s"`, C.GoString(C.Z3_get_string(s.ctx, ast))))
 				return s, nil
-			case types.Bool:
-				b := C.Z3_get_bool_value(s.ctx, ast)
-				return b == C.Z3_L_TRUE, nil
 			}
-			/*
 				case *types.Pointer:
-					pointerDT := getPointerDatatype(s.ctx, ty, s.datatypes)
-					isNilQuery := C.Z3_mk_app(s.ctx, pointerDT.isNil, 1, &ast)
-					var isNilResAST C.Z3_ast
-					ok := C.Z3_model_eval(s.ctx, m, isNilQuery, C.bool(true), &isNilResAST)
-					if !C.bool(ok) {
-						return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, isNilQuery)))
-					}
-					isNil := C.Z3_get_bool_value(s.ctx, isNilResAST) == C.Z3_L_TRUE
-					if isNil {
-						return nil, nil
 					}
 
-					// the pointer points to another value
-					accQuery := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &ast)
-					var accResAST C.Z3_ast
-					ok = C.Z3_model_eval(s.ctx, m, accQuery, C.bool(true), &accResAST)
-					if !C.bool(ok) {
-						return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, accQuery)))
-					}
-					v, err := s.astToValue(m, accResAST, ty.Elem())
-					return &v, err
-			*/
-			/*
-				case *types.Struct:
-					n := ty.NumFields()
-					structDT := getStructDatatype(s.ctx, ty, "", s.datatypes)
-					result := make([]interface{}, n)
-					for i := 0; i < n; i++ {
-						query := C.Z3_mk_app(s.ctx, structDT.accessors[i], 1, &ast)
-						var r C.Z3_ast
-						ok := C.Z3_model_eval(s.ctx, m, query, C.bool(true), &r)
-						if !C.bool(ok) {
-							return nil, errors.Errorf("failed to evaluate %s", C.GoString(C.Z3_ast_to_string(s.ctx, query)))
-						}
-						v, err := s.astToValue(m, r, ty.Field(i).Type())
-						if err != nil {
-							return nil, errors.Errorf("failed to access field %v [#%d] of %v", ty.Field(i), i, ty)
-						}
-						result[i] = v
-					}
-					return result, nil
-			*/
-		}
-		return nil, errors.Errorf("cannot convert Z3_APP_AST (ast: %s) of type %s", C.GoString(C.Z3_ast_to_string(s.ctx, ast)), ty)
-	}
 	return nil, errors.Errorf("cannot convert Z3_AST (kind: %d) of type %s", kind, ty)
 }
 
