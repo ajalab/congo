@@ -219,7 +219,7 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 				nextBlock := instrs[i+1].Block()
 				s.branches = append(s.branches, &BranchIf{
 					instr:     ifInstr,
-					Direction: thenBlock == nextBlock,
+					direction: thenBlock == nextBlock,
 				})
 			}
 		}
@@ -229,14 +229,16 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 		causeInstr := instrs[len(instrs)-1]
 		switch instr := causeInstr.(type) {
 		case *ssa.UnOp:
-			s.branches = append(s.branches, &PanicNilPointerDeref{
-				instr: instr,
-				x:     instr.X,
+			s.branches = append(s.branches, &BranchDeref{
+				instr:   instr,
+				success: false,
+				x:       instr.X,
 			})
 		case *ssa.FieldAddr:
-			s.branches = append(s.branches, &PanicNilPointerDeref{
-				instr: instr,
-				x:     instr.X,
+			s.branches = append(s.branches, &BranchDeref{
+				instr:   instr,
+				success: false,
+				x:       instr.X,
 			})
 		default:
 			log.Fatalf("panic caused by %[1]v: %[1]T but not supported", instr)
@@ -541,18 +543,18 @@ func (s *Z3Solver) Branches() []Branch {
 func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 	switch b := branch.(type) {
 	case *BranchIf:
-		cond := s.get(b.Cond())
+		cond := s.get(b.instr.Cond)
 		if cond == nil {
 			return nil, errors.Errorf("corresponding AST for branching condition was not found: %+v in %v",
 				branch.Instr(),
 				b.Instr().Parent(),
 			)
 		}
-		if (!negate && !b.Direction) || (negate && b.Direction) {
+		if (!negate && !b.direction) || (negate && b.direction) {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
 		return cond, nil
-	case *PanicNilPointerDeref:
+	case *BranchDeref:
 		/*
 		pointer := b.X()
 		pointerAST := s.get(pointer)

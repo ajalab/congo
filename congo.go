@@ -97,17 +97,13 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			branch := branches[j]
 			switch branch := branch.(type) {
 			case *solver.BranchIf:
-				succs := branch.Succs()
-				b := succs[0]
-				if branch.Direction {
-					b = succs[1]
-				}
+				b := branch.Other()
 				if _, ok := covered[b]; !ok {
 					queue = append(queue, j)
 				} else {
 					queueAfter = append(queueAfter, j)
 				}
-			case *solver.PanicNilPointerDeref:
+			case *solver.BranchDeref:
 				queue = append(queue, j)
 			}
 		}
