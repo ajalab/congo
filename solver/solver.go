@@ -631,32 +631,19 @@ func (s *Z3Solver) Solve(negate int) ([]interface{}, error) {
 
 func (s *Z3Solver) getSymbolValues(m C.Z3_model) ([]interface{}, error) {
 	values := make([]interface{}, len(s.symbols))
-
-	n := int(C.Z3_model_get_num_consts(s.ctx, m))
-	for i := 0; i < n; i++ {
-		constDecl := C.Z3_model_get_const_decl(s.ctx, m, C.uint(i))
-		z3Symbol := C.Z3_get_decl_name(s.ctx, constDecl)
-		z3SymbolName := C.GoString(C.Z3_get_symbol_string(s.ctx, z3Symbol))
-		var idx int
-		if _, err := fmt.Sscanf(z3SymbolName, z3SymbolPrefixForSymbol+"%d", &idx); err != nil {
-			return nil, errors.Errorf("z3Symbol has an illegal format: %s", z3SymbolName)
-		}
-
-		a := C.Z3_mk_app(s.ctx, constDecl, 0, nil)
-		var ast C.Z3_ast
-		ok := C.Z3_model_eval(s.ctx, m, a, C.bool(true), &ast)
+	for i, symbol := range s.symbols {
+		var result C.Z3_ast
+		ast := s.asts[symbol]
+		ok := C.Z3_model_eval(s.ctx, m, ast, C.bool(true), &result)
 		if !C.bool(ok) {
 			return nil, errors.Errorf("failed to get symbol[%d] from the model", i)
 		}
-
-		v, err := s.astToValue(m, ast, s.symbols[idx].Type())
+		v, err := s.astToValue(m, result, symbol.Type())
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to convert Z3 AST to values")
 		}
-
-		values[idx] = v
+		values[i] = v
 	}
-
 	return values, nil
 }
 
