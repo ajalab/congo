@@ -40,18 +40,21 @@ type RunResult struct {
 // The iteration time is bounded by maxExec and stopped when minCoverage is accomplished.
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
-	values := make([]interface{}, n)
+	solutions := make([]solver.Solution, n)
 	var symbolValues [][]interface{}
 	var returnValues []interface{}
 	covered := make(map[*ssa.BasicBlock]struct{})
 	coverage := 0.0
 
+	for i, symbol := range prog.symbols {
+		solutions[i] = solver.NewIndefinite(symbol.Type())
+	}
+
 	for i := uint(0); i < maxExec; i++ {
+		values := make([]interface{}, n)
 		// Assign a zero value if the concrete value is nil.
-		for j, symbol := range prog.symbols {
-			if values[j] == nil {
-				values[j] = zero(symbol.Type())
-			}
+		for j, sol := range solutions {
+			values[j] = sol.Concretize(zero)
 		}
 
 		// Interpret the program with the current symbol values.
@@ -110,7 +113,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		queue = append(queue, queueAfter...)
 
 		for _, j := range queue {
-			values, err = z3Solver.Solve(j)
+			solutions, err = z3Solver.Solve(j)
 			if err == nil {
 				break
 			} else if _, ok := err.(solver.UnsatError); ok {
