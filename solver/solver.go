@@ -157,6 +157,13 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 			s.asts[instr], err = s.unop(instr)
 			if err != nil {
 				log.Println(err)
+			} else if instr.Op == token.MUL {
+				// TODO(ajalab): remove duplicate branches
+				s.branches = append(s.branches, &BranchDeref{
+					instr:   instr,
+					success: true,
+					x:       instr.X,
+				})
 			}
 		case *ssa.BinOp:
 			var err error
@@ -182,6 +189,7 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 					for j, arg := range instr.Call.Args {
 						log.Printf("call %v param%d %v <- %v", fn, j, fn.Params[j], arg)
 						s.asts[fn.Params[j]] = s.get(arg)
+						s.refs[fn.Params[j]] = s.refs[arg]
 					}
 					callStack = append(callStack, instr)
 				} else {
@@ -213,34 +221,19 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 				}
 				callStack = callStack[:len(callStack)-1]
 			}
-		case *ssa.FieldAddr:
-			// &((*pstruct).field)
-			/*
-				k := instr.Field
-				tyPStruct := instr.X.Type().Underlying().(*types.Pointer) //.Elem()
-				tyElem := tyPStruct.Elem()
-				tyStruct := tyElem.Underlying().(*types.Struct)
-				tyPField := instr.Type().(*types.Pointer)
-				pointerStructDT := getPointerDatatype(s.ctx, tyPStruct, s.datatypes)
-				pointerFieldDT := getPointerDatatype(s.ctx, tyPField, s.datatypes)
-				structDT := getStructDatatype(s.ctx, tyStruct, tyElem.String(), s.datatypes)
-				ast := s.get(instr.X)
-				deref := C.Z3_mk_app(s.ctx, pointerStructDT.refAcc, 1, &ast)
-				acc := C.Z3_mk_app(s.ctx, structDT.accessors[k], 1, &deref)
-				ref := C.Z3_mk_app(s.ctx, pointerFieldDT.refDecl, 1, &acc)
-				s.nonNil[instr.X] = struct{}{}
-				s.asts[instr] = ref
-			*/
-		}
-		if ifInstr, ok := instr.(*ssa.If); ok {
-			if s.get(ifInstr.Cond) != nil {
+		case *ssa.If:
+			if s.get(instr.Cond) != nil {
 				thenBlock := instr.Block().Succs[0]
 				nextBlock := instrs[i+1].Block()
 				s.branches = append(s.branches, &BranchIf{
-					instr:     ifInstr,
+					instr:     instr,
 					direction: thenBlock == nextBlock,
 				})
 			}
+		case *ssa.Store:
+			log.Printf("store: *%v <- %v", instr.Addr, instr.Val)
+			s.refs[instr.Addr] = instr.Val
+		case *ssa.FieldAddr:
 		}
 	}
 	// Execution was stopped due to panic
@@ -248,11 +241,13 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 		causeInstr := instrs[len(instrs)-1]
 		switch instr := causeInstr.(type) {
 		case *ssa.UnOp:
-			s.branches = append(s.branches, &BranchDeref{
-				instr:   instr,
-				success: false,
-				x:       instr.X,
-			})
+			if instr.Op == token.MUL {
+				s.branches = append(s.branches, &BranchDeref{
+					instr:   instr,
+					success: false,
+					x:       instr.X,
+				})
+			}
 		case *ssa.FieldAddr:
 			s.branches = append(s.branches, &BranchDeref{
 				instr:   instr,
@@ -455,19 +450,6 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		return C.Z3_mk_bvneg(s.ctx, x), nil
 	case token.NOT:
 		return C.Z3_mk_not(s.ctx, x), nil
-		// TODO(ajalab): existance check
-		/*
-			pointer := instr.X
-			pointerTy := pointer.Type().(*types.Pointer)
-			pointerAST := s.get(pointer)
-			if pointerAST == nil {
-				return nil, errors.Errorf("corresponding AST for pointer was not found: %v", pointer)
-			}
-			pointerDT := getPointerDatatype(s.ctx, pointerTy, s.datatypes)
-			ref := C.Z3_mk_app(s.ctx, pointerDT.refAcc, 1, &pointerAST)
-			s.nonNil[pointer] = struct{}{}
-			return ref, nil
-		*/
 		// case token.XOR:
 		// case token.ARROW:
 	}
@@ -596,7 +578,7 @@ func (s *Z3Solver) getBranchAST(branch Branch, negate bool) (C.Z3_ast, error) {
 		sort := C.Z3_mk_int_sort(s.ctx)
 		zero := C.Z3_mk_unsigned_int(s.ctx, C.uint(0), sort)
 		cond := C.Z3_mk_eq(s.ctx, pointer, zero)
-		if b.success {
+		if negate && !b.success || !negate && b.success {
 			cond = C.Z3_mk_not(s.ctx, cond)
 		}
 		return cond, nil
@@ -742,7 +724,7 @@ func (s *Z3Solver) getSolutionFromModel(m C.Z3_model, v ssa.Value) (Solution, er
 				ty:    ty,
 				value: nil,
 			}, nil
-		case 1:
+		default:
 			ref := s.refs[v]
 			sol, _ := s.getSolutionFromModel(m, ref)
 			if sol == nil {
