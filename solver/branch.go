@@ -2,18 +2,24 @@ package solver
 
 import "golang.org/x/tools/go/ssa"
 
-// Branch represents a branching instruction that appeared in a running trace with some additional information.
+// Branch represents a branch appeared in a running trace.
 // This includes instructions that may cause a panic (e.g., pointer dereference) as well as ordinary branching by *ssa.If.
 type Branch interface {
 	// Instr returns ssa.Instruction value for the branch.
 	Instr() ssa.Instruction
+
+	// To returns ssa.BasicBlock that the branch took.
+	To() *ssa.BasicBlock
+
+	// Other returns ssa.BasicBlock that the branch did not take.
+	Other() *ssa.BasicBlock
 }
 
 // BranchIf contains a branching instruction (*ssa.If) and
 // the direction taken in the concolic execution.
 type BranchIf struct {
 	instr     *ssa.If
-	Direction bool
+	direction bool
 }
 
 // Instr returns ssa.Instruction value for the branch.
@@ -21,28 +27,49 @@ func (b *BranchIf) Instr() ssa.Instruction {
 	return b.instr
 }
 
-// Succs returns the succeeding blocks.
-func (b *BranchIf) Succs() []*ssa.BasicBlock {
-	return b.instr.Block().Succs
+// To returns ssa.BasicBlock that the branch took.
+func (b *BranchIf) To() *ssa.BasicBlock {
+	succs := b.instr.Block().Succs
+	if b.direction {
+		return succs[0]
+	}
+	return succs[1]
 }
 
-// Cond returns ssa.Value that corresponds to the condition in the if statement
-func (b *BranchIf) Cond() ssa.Value {
-	return b.instr.Cond
+// Other returns ssa.BasicBlock that the branch did not take.
+func (b *BranchIf) Other() *ssa.BasicBlock {
+	succs := b.instr.Block().Succs
+	if b.direction {
+		return succs[1]
+	}
+	return succs[0]
 }
 
-// PanicNilPointerDeref represents a (panic) branching caused by nil pointer dereference.
-type PanicNilPointerDeref struct {
-	instr ssa.Instruction
-	x     ssa.Value
+// BranchDeref represents a branching (success or panic) caused by
+// dereference (*ssa.UnOp or *ssa.FieldAddr).
+type BranchDeref struct {
+	instr   ssa.Instruction
+	success bool
+	x       ssa.Value
 }
 
 // Instr returns ssa.Instruction value for the branch.
-func (p *PanicNilPointerDeref) Instr() ssa.Instruction {
-	return p.instr
+func (b *BranchDeref) Instr() ssa.Instruction {
+	return b.instr
 }
 
-// X returns ssa.Value that was dereferenced.
-func (p *PanicNilPointerDeref) X() ssa.Value {
-	return p.x
+// To returns ssa.BasicBlock that the branch took.
+func (b *BranchDeref) To() *ssa.BasicBlock {
+	if b.success {
+		return b.instr.Block()
+	}
+	return nil
+}
+
+// Other returns ssa.BasicBlock that the branch did not take.
+func (b *BranchDeref) Other() *ssa.BasicBlock {
+	if b.success {
+		return nil
+	}
+	return b.instr.Block()
 }
