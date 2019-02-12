@@ -2,13 +2,21 @@ package testdata
 
 import "fmt"
 
-// PointerIsNil is a test case to check nil handling
+// PointerIsNil is a test case to check nil handling.
 func PointerIsNil(a *int) {
 	if a == nil {
 		fmt.Println("a is nil")
 	} else {
 		fmt.Println("a is not nil")
 	}
+}
+
+// PointerIsNotNil is a test case to check nil handling.
+func PointerIsNotNil(a *int) bool {
+	if a == nil {
+		return false
+	}
+	return true
 }
 
 // PointerDeref is a test case to check pointer indirection.
@@ -61,7 +69,7 @@ func PointerEquals(a *int) {
 */
 
 // PointerStore is a test case to check storing a value.
-func PointerStore(a *int) bool {
+func PointerStore(a *int) {
 	if *a > 0 {
 		*a = *a * 2
 	}
@@ -69,7 +77,17 @@ func PointerStore(a *int) bool {
 		*a = *a + 1
 	}
 	if *a == 11 {
-		return true
+		fmt.Println("found")
 	}
-	return false
 }
+
+/*
+// PointerStore2 ...
+func PointerStore2(a *int) bool {
+	*a = *a * 2
+	if *a == 100 {
+		return false
+	}
+	return true
+}
+*/
