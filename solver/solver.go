@@ -39,6 +39,7 @@ func z3MkStringSymbol(ctx C.Z3_context, s string) C.Z3_symbol {
 type Z3Solver struct {
 	asts     map[ssa.Value]C.Z3_ast
 	refs     map[ssa.Value]ssa.Value
+	nonnull  map[ssa.Value]struct{}
 	ctx      C.Z3_context
 	branches []Branch
 	symbols  []ssa.Value
@@ -60,9 +61,10 @@ func CreateZ3Solver(symbols []ssa.Value, trace *trace.Trace) (*Z3Solver, error) 
 	C.Z3_set_error_handler(ctx, (*C.Z3_error_handler)(C.goZ3ErrorHandler))
 
 	s := &Z3Solver{
-		asts: make(map[ssa.Value]C.Z3_ast),
-		refs: make(map[ssa.Value]ssa.Value),
-		ctx:  ctx,
+		asts:    make(map[ssa.Value]C.Z3_ast),
+		refs:    make(map[ssa.Value]ssa.Value),
+		nonnull: make(map[ssa.Value]struct{}),
+		ctx:     ctx,
 	}
 
 	err := s.loadSymbols(symbols)
@@ -154,17 +156,15 @@ func (s *Z3Solver) loadTrace(tr *trace.Trace) {
 		switch instr := instr.(type) {
 		case *ssa.UnOp:
 			var err error
-			s.asts[instr], err = s.unop(instr)
+			if instr.Op == token.MUL {
+				s.asts[instr], err = s.deref(instr)
+			} else {
+				s.asts[instr], err = s.unop(instr)
+			}
 			if err != nil {
 				log.Println(err)
-			} else if instr.Op == token.MUL {
-				// TODO(ajalab): remove duplicate branches
-				s.branches = append(s.branches, &BranchDeref{
-					instr:   instr,
-					success: true,
-					x:       instr.X,
-				})
 			}
+
 		case *ssa.BinOp:
 			var err error
 			s.asts[instr], err = s.binop(instr)
@@ -432,15 +432,27 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 	panic("unimplemented")
 }
 
-func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
-	if instr.Op == token.MUL {
-		ref, ok := s.refs[instr.X]
-		if !ok {
-			return nil, errors.Errorf("reference does not exist: %v", instr.X)
-		}
-		return s.get(ref), nil
+func (s *Z3Solver) deref(instr *ssa.UnOp) (C.Z3_ast, error) {
+	ref, ok := s.refs[instr.X]
+	if !ok {
+		return nil, errors.Errorf("reference does not exist: %v", instr.X)
 	}
+	ast := s.get(ref)
+	if ast == nil {
+		return nil, errors.Errorf("reference ast does not exist: %v", instr.X)
+	}
+	if _, ok := s.nonnull[instr.X]; !ok {
+		s.branches = append(s.branches, &BranchDeref{
+			instr:   instr,
+			success: true,
+			x:       instr.X,
+		})
+		s.nonnull[instr.X] = struct{}{}
+	}
+	return ast, nil
+}
 
+func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 	x := s.get(instr.X)
 	if x == nil {
 		return nil, errors.Errorf("unop: operand is not registered: %v", instr)
