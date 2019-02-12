@@ -160,16 +160,6 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 		"",
 		[]string{},
 	)
-
-	/*
-		return &RunResult{
-			Trace: trace.NewTrace(
-				interpResult.Instrs,
-				interpResult.ExitCode == 0,
-			),
-			ReturnValues: interpResult.ReturnValue,
-		}, err
-	*/
 }
 
 // DumpRunnerAST dumps the runner AST file into dest.

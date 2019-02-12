@@ -79,21 +79,6 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
-/*
-func (s *Z3Solver) getSymbolAST(name string, ty types.Type) C.Z3_ast {
-	z3Symbol := z3MkStringSymbol(s.ctx, name)
-	switch ty := ty.(type) {
-	case *types.Basic:
-		sort := newBasicSort(s.ctx, ty)
-		return C.Z3_mk_const(s.ctx, z3Symbol, sort)
-	case *types.Pointer:
-
-	}
-	log.Fatalf("unsupported type: %[1]v: %[1]T", ty)
-	panic("unimplemented")
-}
-*/
-
 func (s *Z3Solver) loadSymbol(symbol ssa.Value, name string) {
 	ty := symbol.Type()
 	z3Symbol := z3MkStringSymbol(s.ctx, name)
@@ -545,19 +530,6 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 	log.Fatalf("getConstAST: Unimplemented const value %v: %T", v, v.Type())
 	panic("unimplemented")
 }
-
-/*
-func (s *Z3Solver) hasBranchAST(branch Branch) bool {
-	switch b := branch.(type) {
-	case *BranchIf:
-		return s.get(b.Cond()) != nil
-	case *PanicNilPointerDeref:
-		return s.get(b.X()) != nil
-	default:
-		panic("unimplemented")
-	}
-}
-*/
 
 func (s *Z3Solver) Branches() []Branch {
 	return s.branches
