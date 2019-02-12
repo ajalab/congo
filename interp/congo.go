@@ -39,7 +39,7 @@ func value2InterpValue(v interface{}, t types.Type) value {
 
 // CongoInterpResult is the type that contains interp.Interp result
 type CongoInterpResult struct {
-	ExitCode    int
-	Instrs      []ssa.Instruction
-	ReturnValue interface{}
+	ExitCode int
+	Instrs   []ssa.Instruction
+	Return   interface{}
 }

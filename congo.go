@@ -11,7 +11,6 @@ import (
 
 	"github.com/ajalab/congo/interp"
 	"github.com/ajalab/congo/solver"
-	"github.com/ajalab/congo/trace"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -27,13 +26,6 @@ type Program struct {
 	congoSymbolPackage *ssa.Package
 	targetFunc         *ssa.Function
 	symbols            []ssa.Value
-}
-
-// RunResult contains a running trace and information such as
-// whether it is a complete trace without panic.
-type RunResult struct {
-	Trace        *trace.Trace
-	ReturnValues interface{}
 }
 
 // Execute executes concolic execution.
@@ -65,7 +57,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 		// Update the covered blocks.
 		nNewCoveredBlks := 0
-		for _, instr := range result.Trace.Instrs() {
+		for _, instr := range result.Instrs {
 			b := instr.Block()
 			if b.Parent() == prog.targetFunc {
 				if _, ok := covered[b]; !ok {
@@ -77,7 +69,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		// Record the concrete values if new blocks are covered.
 		if nNewCoveredBlks > 0 {
 			symbolValues = append(symbolValues, values)
-			returnValues = append(returnValues, result.ReturnValues)
+			returnValues = append(returnValues, result.Return)
 		}
 
 		// Compute the coverage and exit if it exceeds the minCoverage.
@@ -89,7 +81,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			break
 		}
 
-		z3Solver, err := solver.CreateZ3Solver(prog.symbols, result.Trace)
+		z3Solver, err := solver.CreateZ3Solver(prog.symbols, result.Instrs, result.ExitCode == 0)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create a solver")
 		}
@@ -147,7 +139,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 }
 
 // Run runs the program by the interpreter provided by interp module.
-func (prog *Program) Run(values []interface{}) (*RunResult, error) {
+func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error) {
 	n := len(values)
 	symbolValues := make([]interp.SymbolicValue, n)
 	for i, symbol := range prog.symbols {
@@ -159,7 +151,7 @@ func (prog *Program) Run(values []interface{}) (*RunResult, error) {
 
 	interp.CapturedOutput = new(bytes.Buffer)
 	mode := interp.DisableRecover // interp.EnableTracing
-	interpResult, err := interp.Interpret(
+	return interp.Interpret(
 		prog.runnerPackage,
 		prog.targetFunc,
 		symbolValues,
@@ -169,13 +161,15 @@ func (prog *Program) Run(values []interface{}) (*RunResult, error) {
 		[]string{},
 	)
 
-	return &RunResult{
-		Trace: trace.NewTrace(
-			interpResult.Instrs,
-			interpResult.ExitCode == 0,
-		),
-		ReturnValues: interpResult.ReturnValue,
-	}, err
+	/*
+		return &RunResult{
+			Trace: trace.NewTrace(
+				interpResult.Instrs,
+				interpResult.ExitCode == 0,
+			),
+			ReturnValues: interpResult.ReturnValue,
+		}, err
+	*/
 }
 
 // DumpRunnerAST dumps the runner AST file into dest.

@@ -21,8 +21,6 @@ import (
 
 	"github.com/pkg/errors"
 	"golang.org/x/tools/go/ssa"
-
-	"github.com/ajalab/congo/trace"
 )
 
 const (
@@ -52,7 +50,7 @@ func goZ3ErrorHandler(ctx C.Z3_context, e C.Z3_error_code) {
 }
 
 // CreateZ3Solver returns a new Z3Solver.
-func CreateZ3Solver(symbols []ssa.Value, trace *trace.Trace) (*Z3Solver, error) {
+func CreateZ3Solver(symbols []ssa.Value, instrs []ssa.Instruction, isComplete bool) (*Z3Solver, error) {
 	cfg := C.Z3_mk_config()
 	defer C.Z3_del_config(cfg)
 
@@ -71,7 +69,7 @@ func CreateZ3Solver(symbols []ssa.Value, trace *trace.Trace) (*Z3Solver, error) 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load symbols")
 	}
-	s.loadTrace(trace)
+	s.loadTrace(instrs, isComplete)
 
 	return s, nil
 }
@@ -129,13 +127,10 @@ func (s *Z3Solver) loadSymbols(symbols []ssa.Value) error {
 }
 
 // loadTrace loads a running trace to the solver.
-func (s *Z3Solver) loadTrace(tr *trace.Trace) {
+func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 	var currentBlock *ssa.BasicBlock
 	var prevBlock *ssa.BasicBlock
 	var callStack []*ssa.Call
-
-	instrs := tr.Instrs()
-	isComplete := tr.IsComplete()
 
 	// If the trace is not complete, ignore the last instruction,
 	// which is a cause of failure.
