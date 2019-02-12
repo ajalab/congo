@@ -38,6 +38,7 @@ func PointerDeref3(a, b *int) {
 	}
 }
 
+/*
 // PointerDoubleDeref is a test case to check nested pointer indirection.
 func PointerDoubleDeref(a **int) {
 	if **a < 5 {
@@ -57,12 +58,18 @@ func PointerEquals(a *int) {
 		fmt.Println("&a != &PVar")
 	}
 }
+*/
 
-func PointerStore(a *int) {
+// PointerStore is a test case to check storing a value.
+func PointerStore(a *int) bool {
 	if *a > 0 {
 		*a = *a * 2
 	}
 	if *a > 2 {
 		*a = *a + 1
 	}
+	if *a == 11 {
+		return true
+	}
+	return false
 }
