@@ -79,6 +79,21 @@ func (s *Z3Solver) Close() {
 	C.Z3_del_context(s.ctx)
 }
 
+func newBasicSort(ctx C.Z3_context, ty *types.Basic) C.Z3_sort {
+	info := ty.Info()
+	switch {
+	case info&types.IsBoolean > 0:
+		return C.Z3_mk_bool_sort(ctx)
+	case info&types.IsInteger > 0:
+		return C.Z3_mk_bv_sort(ctx, C.uint(sizeOfBasicKind(ty.Kind())))
+	case info&types.IsString > 0:
+		return C.Z3_mk_string_sort(ctx)
+	}
+
+	log.Fatalf("unsupported basic type: %v: %v", ty, ty.Kind())
+	panic("unimplemented")
+}
+
 func (s *Z3Solver) loadSymbol(symbol ssa.Value, name string) {
 	ty := symbol.Type()
 	z3Symbol := z3MkStringSymbol(s.ctx, name)
