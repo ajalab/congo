@@ -6,10 +6,10 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-type Ref struct {
+type ref struct {
 	ssa.Value
 }
 
-func (v *Ref) Type() types.Type {
+func (v *ref) Type() types.Type {
 	return v.Value.Type().(*types.Pointer).Elem()
 }

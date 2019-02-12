@@ -108,7 +108,7 @@ func (s *Z3Solver) loadSymbol(symbol ssa.Value, name string) {
 		ast := C.Z3_mk_const(s.ctx, z3Symbol, sort)
 		s.asts[symbol] = ast
 
-		ref := &Ref{symbol}
+		ref := &ref{symbol}
 		s.refs[symbol] = ref
 		s.loadSymbol(ref, "*"+name)
 	}
