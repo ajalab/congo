@@ -83,16 +83,17 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 	}
 
 	// Add test cases
-	for i, symbolValues := range r.SymbolValues {
+	for _, runResult := range r.RunResults {
 		// Add symbol values
+		symbolValues := runResult.symbolValues
 		tc := &ast.CompositeLit{}
-		for j, value := range symbolValues {
-			ty := r.SymbolTypes[j]
+		for i, value := range symbolValues {
+			ty := r.SymbolTypes[i]
 			tc.Elts = append(tc.Elts, value2ASTExpr(value, ty))
 		}
 
 		// Add oracle values
-		returnValues := r.ReturnValues[i]
+		returnValues := runResult.returnValues
 		returnValuesLen := r.targetFuncSig.Results().Len()
 		switch {
 		case returnValuesLen == 1:
@@ -134,7 +135,8 @@ func (r *ExecuteResult) insertAuxiliaryFuncs(f *ast.File) {
 		if _, ok := insertFuncs[name]; ok {
 			continue
 		}
-		for _, v := range r.SymbolValues[i] {
+		for _, rr := range r.RunResults {
+			v := rr.symbolValues[i]
 			if v != nil {
 				insertFuncs[name] = getAuxiliaryPtrFunc(name, elemTy)
 				break
@@ -193,7 +195,7 @@ func (r *ExecuteResult) rewriteSymbols(runnerFunc *ast.FuncDecl) ([]string, []st
 	retValType := r.congoSymbolPackage.Scope().Lookup("RetValType").Type()
 	var err error
 
-	symbolNames := make([]string, len(r.SymbolValues[0]))
+	symbolNames := make([]string, len(r.SymbolTypes))
 	for i := range symbolNames {
 		symbolNames[i] = fmt.Sprintf("symbol%d", i)
 	}

@@ -33,10 +33,9 @@ type Program struct {
 func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
 	n := len(prog.symbols)
 	solutions := make([]solver.Solution, n)
-	var symbolValues [][]interface{}
-	var returnValues []interface{}
 	covered := make(map[*ssa.BasicBlock]struct{})
 	coverage := 0.0
+	var runResults []*RunResult
 
 	for i, symbol := range prog.symbols {
 		solutions[i] = solver.NewIndefinite(symbol.Type())
@@ -66,10 +65,14 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 				}
 			}
 		}
+
 		// Record the concrete values if new blocks are covered.
 		if nNewCoveredBlks > 0 {
-			symbolValues = append(symbolValues, values)
-			returnValues = append(returnValues, result.Return)
+			runResults = append(runResults, &RunResult{
+				symbolValues: values,
+				returnValues: result.Return,
+				panicked:     result.ExitCode != 0,
+			})
 		}
 
 		// Compute the coverage and exit if it exceeds the minCoverage.
@@ -125,9 +128,8 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 	return &ExecuteResult{
 		Coverage:           coverage,
-		SymbolValues:       symbolValues,
 		SymbolTypes:        symbolTypes,
-		ReturnValues:       returnValues,
+		RunResults:         runResults,
 		runnerFile:         prog.runnerFile,
 		runnerTypesInfo:    prog.runnerTypesInfo,
 		runnerPackage:      prog.runnerPackage.Pkg,
@@ -178,10 +180,9 @@ func (prog *Program) DumpRunnerSSA(dest io.Writer) error {
 // ReturnValues has type []interp.value so it is meaningless to make this property public.
 // We use reflection to extract values from interp.value for now.
 type ExecuteResult struct {
-	Coverage     float64         // achieved coverage.
-	SymbolValues [][]interface{} // list of values for symbols.
-	SymbolTypes  []types.Type
-	ReturnValues []interface{} // returned values corresponding to execution results. (invariant: len(SymbolValues) == len(ReturnValues))
+	Coverage    float64 // achieved coverage.
+	SymbolTypes []types.Type
+	RunResults  []*RunResult
 
 	runnerFile         *ast.File
 	runnerTypesInfo    *types.Info
@@ -190,4 +191,11 @@ type ExecuteResult struct {
 	congoSymbolPackage *types.Package
 	targetFuncSig      *types.Signature
 	targetFuncName     string
+}
+
+// RunResult is a type that contains the result of Program.Run.
+type RunResult struct {
+	symbolValues []interface{}
+	returnValues interface{}
+	panicked     bool
 }
