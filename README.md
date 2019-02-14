@@ -39,7 +39,7 @@ because it first creates empty `foo_test.go`, which will prevent the go compiler
 Currently Congo generates a separate package (`*_test`) for a target package.
 This means you cannot specify unexported functions (starting with a lower letter).
 
-## Generated Tests
+## Test Generation
 
 If your target function signature has no return values (like `func (a, b int)`),
 Congo will generate a test code calling it with arguments found by concolic execution:
@@ -110,19 +110,17 @@ func TestBaz(t *testing.T) {
 The following types and operations are currently supported.
 
 - booleans and logical operators
-- integers (`int`, `uint`, `int8`, ...) and basic arithmetic operators. Congo treat an integer as a bit-vector.
+- integers (`int`, `uint`, `int8`, ...) and basic arithmetic operators. Congo treats an integer as a bit-vector.
 - strings (only concatenation, checking equality, and computing length)
-- pointers of above types and dereference. Congo detects panic caused by nil pointer dereference.
-- pointers of struct
+- pointers of above types. Congo supports pointer dereference and store. Congo detects panic caused by nil pointer dereference.
 - function calls within the target package.
-
-[testdata/](testdata/) contains functions that Congo supports (but there are some exceptions).
 
 ## Unsupported Features
 
 Though Congo is being enthusiastically developed,
 lots of features that you will need are not supported yet.
 
+- struct
 - floating points
 - storing a value through a pointer
 - arrays and slices
