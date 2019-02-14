@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"runtime/pprof"
 
@@ -11,6 +10,7 @@ import (
 	"go/token"
 
 	"github.com/ajalab/congo"
+	"github.com/ajalab/congo/log"
 )
 
 var (
@@ -23,9 +23,11 @@ var (
 	runner      = flag.String("r", "", "test template")
 )
 
+/*
 func init() {
 	log.SetFlags(log.Llongfile)
 }
+*/
 
 func main() {
 	flag.Parse()
@@ -44,7 +46,7 @@ func main() {
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
-			log.Fatal(err)
+			log.Error.Fatal(err)
 		}
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
@@ -52,21 +54,21 @@ func main() {
 	packageName := flag.Arg(0)
 	targetPackage, err := congo.LoadTargetPackage(packageName)
 	if err != nil {
-		log.Fatalf("failed to load package %s: %+v", packageName, err)
+		log.Error.Fatalf("failed to load package %s: %+v", packageName, err)
 	}
 
 	runnerPackagePath := *runner
 	if runnerPackagePath == "" {
 		runnerPackagePath, err = congo.GenerateRunner(targetPackage, *funcName)
 		if err != nil {
-			log.Fatalf("failed to generate a runner: %v", err)
+			log.Error.Fatalf("failed to generate a runner: %v", err)
 		}
 		defer os.Remove(runnerPackagePath)
 	}
 
 	prog, err := congo.Load(targetPackage.PkgPath, runnerPackagePath, *funcName)
 	if err != nil {
-		log.Fatalf("failed to load: %+v", err)
+		log.Error.Fatalf("failed to load: %+v", err)
 	}
 	if *verbose {
 		prog.DumpRunnerAST(os.Stderr)
@@ -75,19 +77,19 @@ func main() {
 
 	result, err := prog.Execute(*maxExec, *minCoverage)
 	if err != nil {
-		log.Fatalf("failed to perform concolic execution: %+v", err)
+		log.Error.Fatalf("failed to perform concolic execution: %+v", err)
 	}
 	f, err := result.GenerateTest()
 	if err != nil {
-		log.Fatalf("failed to generate test: %+v", err)
+		log.Error.Fatalf("failed to generate test: %+v", err)
 	}
 
 	dest := os.Stdout
 	if *o != "" {
-		log.Println("save to", *o)
+		log.Info.Print("save to", *o)
 		dest, err = os.Create(*o)
 		if err != nil {
-			log.Fatalf("faled to open the destination file: %v", err)
+			log.Error.Fatalf("faled to open the destination file: %v", err)
 		}
 	}
 	format.Node(dest, token.NewFileSet(), f)

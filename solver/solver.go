@@ -14,10 +14,10 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
-	"log"
-	"os"
 	"strconv"
 	"unsafe"
+
+	"github.com/ajalab/congo/log"
 
 	"github.com/pkg/errors"
 	"golang.org/x/tools/go/ssa"
@@ -90,7 +90,7 @@ func newBasicSort(ctx C.Z3_context, ty *types.Basic) C.Z3_sort {
 		return C.Z3_mk_string_sort(ctx)
 	}
 
-	log.Fatalf("unsupported basic type: %v: %v", ty, ty.Kind())
+	log.Error.Fatalf("unsupported basic type: %v: %v", ty, ty.Kind())
 	panic("unimplemented")
 }
 
@@ -145,7 +145,7 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 		if currentBlock != block {
 			prevBlock = currentBlock
 			currentBlock = block
-			log.Printf("block: %v.%s", block.Parent(), block)
+			log.Debug.Printf("block: %v.%s", block.Parent(), block)
 		}
 
 		switch instr := instr.(type) {
@@ -157,14 +157,14 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 				s.asts[instr], err = s.unop(instr)
 			}
 			if err != nil {
-				log.Println(err)
+				log.Debug.Print(err)
 			}
 
 		case *ssa.BinOp:
 			var err error
 			s.asts[instr], err = s.binop(instr)
 			if err != nil {
-				log.Println(err)
+				log.Debug.Print(err)
 			}
 		case *ssa.Phi:
 			var v C.Z3_ast
@@ -182,13 +182,13 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 				// Is the called function recorded?
 				if i < len(instrs)-1 && instrs[i+1].Parent() == fn {
 					for j, arg := range instr.Call.Args {
-						log.Printf("call %v param%d %v <- %v", fn, j, fn.Params[j], arg)
+						log.Debug.Printf("call %v param%d %v <- %v", fn, j, fn.Params[j], arg)
 						s.asts[fn.Params[j]] = s.get(arg)
 						s.refs[fn.Params[j]] = s.refs[arg]
 					}
 					callStack = append(callStack, instr)
 				} else {
-					log.Printf("ignored function call %v (trace[i + 1]) = %v", instr, instrs[i+1])
+					log.Debug.Printf("ignored function call %v (trace[i + 1]) = %v", instr, instrs[i+1])
 				}
 			case *ssa.Builtin:
 				switch fn.Name() {
@@ -198,7 +198,7 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 					s.asts[instr] = z3MakeLen(s.ctx, ast, arg.Type())
 				}
 			default:
-				log.Fatalln("addConstraint: Not supported function:", fn)
+				log.Error.Fatalf("addConstraint: Not supported function:", fn)
 				panic("unimplemented")
 			}
 		case *ssa.Return:
@@ -212,7 +212,7 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 				case 1:
 					s.asts[callInstr] = s.get(instr.Results[0])
 				default:
-					log.Println("multiple return values are not supported")
+					log.Debug.Print("multiple return values are not supported")
 				}
 				callStack = callStack[:len(callStack)-1]
 			}
@@ -226,7 +226,6 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 				})
 			}
 		case *ssa.Store:
-			log.Printf("store: *%v <- %v", instr.Addr, instr.Val)
 			s.refs[instr.Addr] = instr.Val
 		case *ssa.FieldAddr:
 		}
@@ -250,7 +249,7 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 				x:       instr.X,
 			})
 		default:
-			log.Fatalf("panic caused by %[1]v: %[1]T but not supported", instr)
+			log.Error.Fatalf("panic caused by %[1]v: %[1]T but not supported", instr)
 			panic("unreachable")
 		}
 	}
@@ -269,7 +268,7 @@ func (s *Z3Solver) Branch(i int) Branch {
 func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeAdd: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeAdd: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -280,7 +279,7 @@ func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 		args := []C.Z3_ast{x, y}
 		return C.Z3_mk_seq_concat(ctx, 2, &args[0])
 	default:
-		log.Fatalf("z3MakeAdd: not implemented: %T\n", ty)
+		log.Error.Fatalf("z3MakeAdd: not implemented: %T\n", ty)
 		panic("unimplemented")
 	}
 }
@@ -288,7 +287,7 @@ func z3MakeAdd(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeSub(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeSub: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeSub: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -296,7 +295,7 @@ func z3MakeSub(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	case info&types.IsInteger > 0:
 		return C.Z3_mk_bvsub(ctx, x, y)
 	default:
-		log.Fatalf("z3MakeSub: not implemented: %T\n", ty)
+		log.Error.Fatalf("z3MakeSub: not implemented: %T\n", ty)
 		panic("unimplemented")
 	}
 }
@@ -304,7 +303,7 @@ func z3MakeSub(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeMul(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeMul: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeMul: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -312,7 +311,7 @@ func z3MakeMul(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	case info&types.IsInteger > 0:
 		return C.Z3_mk_bvmul(ctx, x, y)
 	default:
-		log.Fatalf("z3MakeMul: not implemented: %T\n", ty)
+		log.Error.Fatalf("z3MakeMul: not implemented: %T\n", ty)
 		panic("unimplemented")
 	}
 }
@@ -320,7 +319,7 @@ func z3MakeMul(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeDiv(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeDiv: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeDiv: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -331,7 +330,7 @@ func z3MakeDiv(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 		}
 		return C.Z3_mk_bvsdiv(ctx, x, y)
 	default:
-		log.Fatalf("z3MakeDiv: not implemented info: %v", basicTy.Kind())
+		log.Error.Fatalf("z3MakeDiv: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
 	}
 }
@@ -339,7 +338,7 @@ func z3MakeDiv(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeLt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeLt: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeLt: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -351,7 +350,7 @@ func z3MakeLt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 		return C.Z3_mk_bvslt(ctx, x, y)
 
 	default:
-		log.Fatalf("z3MakeLt: not implemented info: %v", basicTy.Kind())
+		log.Error.Fatalf("z3MakeLt: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
 	}
 }
@@ -359,7 +358,7 @@ func z3MakeLt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeLe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeLe: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeLe: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -371,7 +370,7 @@ func z3MakeLe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 		return C.Z3_mk_bvsle(ctx, x, y)
 
 	default:
-		log.Fatalf("z3MakeLe: not implemented info: %v", basicTy.Kind())
+		log.Error.Fatalf("z3MakeLe: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
 	}
 }
@@ -379,7 +378,7 @@ func z3MakeLe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeGt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeGt: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeGt: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -391,7 +390,7 @@ func z3MakeGt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 		return C.Z3_mk_bvsgt(ctx, x, y)
 
 	default:
-		log.Fatalf("z3MakeGt: not implemented info: %v", basicTy.Kind())
+		log.Error.Fatalf("z3MakeGt: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
 	}
 }
@@ -399,7 +398,7 @@ func z3MakeGt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
-		log.Fatalf("z3MakeGe: invalid type: %T\n", ty)
+		log.Error.Fatalf("z3MakeGe: invalid type: %T\n", ty)
 		panic("unreachable")
 	}
 	info := basicTy.Info()
@@ -411,7 +410,7 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 		return C.Z3_mk_bvsge(ctx, x, y)
 
 	default:
-		log.Fatalf("z3MakeGe: not implemented info: %v", basicTy.Kind())
+		log.Error.Fatalf("z3MakeGe: not implemented info: %v", basicTy.Kind())
 		panic("unimplemented")
 	}
 }
@@ -423,7 +422,7 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 			return C.Z3_mk_int2bv(ctx, strconv.IntSize, C.Z3_mk_seq_length(ctx, x))
 		}
 	}
-	log.Fatalf("z3MakeLen: invalid type: %T\n", ty)
+	log.Error.Fatalf("z3MakeLen: invalid type: %T\n", ty)
 	panic("unimplemented")
 }
 
@@ -511,7 +510,7 @@ func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 	if a, ok := s.asts[v]; ok {
 		return a
 	}
-	log.Printf("get: Corresponding Z3 AST was not found for %s = %s in %s", v.Name(), v, v.Parent())
+	log.Debug.Printf("get: Corresponding Z3 AST was not found for %s = %s in %s", v.Name(), v, v.Parent())
 	return nil
 }
 
@@ -542,7 +541,7 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 			return C.Z3_mk_unsigned_int(s.ctx, C.uint(0), sort)
 		}
 	}
-	log.Fatalf("getConstAST: Unimplemented const value %v: %T", v, v.Type())
+	log.Error.Fatalf("getConstAST: Unimplemented const value %v: %T", v, v.Type())
 	panic("unimplemented")
 }
 
@@ -606,7 +605,7 @@ func (s *Z3Solver) Solve(negate int) ([]Solution, error) {
 	}
 	C.Z3_solver_assert(s.ctx, solver, negCond)
 
-	fmt.Fprintf(os.Stderr, "solver\n%s\n", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
+	// fmt.Fprintf(os.Stderr, "solver\n%s\n", C.GoString(C.Z3_solver_to_string(s.ctx, solver)))
 
 	result := C.Z3_solver_check(s.ctx, solver)
 
@@ -619,7 +618,7 @@ func (s *Z3Solver) Solve(negate int) ([]Solution, error) {
 			C.Z3_model_inc_ref(s.ctx, m)
 			defer C.Z3_model_dec_ref(s.ctx, m)
 		}
-		fmt.Fprintf(os.Stderr, "model\n%s\n", C.GoString(C.Z3_model_to_string(s.ctx, m)))
+		// fmt.Fprintf(os.Stderr, "model\n%s\n", C.GoString(C.Z3_model_to_string(s.ctx, m)))
 		solutions, err := s.getSolutions(m)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get values from a model: %s", C.GoString(C.Z3_model_to_string(s.ctx, m)))

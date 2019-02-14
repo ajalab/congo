@@ -7,9 +7,9 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"log"
 
 	"github.com/ajalab/congo/interp"
+	"github.com/ajalab/congo/log"
 	"github.com/ajalab/congo/solver"
 
 	"golang.org/x/tools/go/ssa"
@@ -48,10 +48,12 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			values[j] = sol.Concretize(zero)
 		}
 
+		log.Info.Printf("[%d] run: %v", i, values)
+
 		// Interpret the program with the current symbol values.
 		result, err := prog.Run(values)
 		if err != nil {
-			log.Printf("panic occurred: %v", values)
+			log.Info.Printf("[%d] panic", i)
 		}
 
 		// Update the covered blocks.
@@ -78,10 +80,14 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		// Compute the coverage and exit if it exceeds the minCoverage.
 		// Also exit when the execution count minus one is equal to maxExec to avoid unnecessary constraint solver call.
 		coverage = float64(len(covered)) / float64(len(prog.targetFunc.Blocks))
-		log.Println("coverage", coverage)
-		if coverage >= minCoverage || i == maxExec-1 {
-			log.Println("stop")
+		log.Info.Printf("[%d] coverage: %.3f", i, coverage)
+		if coverage >= minCoverage {
+			log.Info.Printf("[%d] stop because the coverage criteria has been satisfied.", i)
 			break
+		}
+
+		if i == maxExec-1 {
+			log.Info.Printf("[%d] stop because the runnign count has reached the limit", i)
 		}
 
 		z3Solver, err := solver.CreateZ3Solver(prog.symbols, result.Instrs, result.ExitCode == 0)
@@ -108,11 +114,13 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		queue = append(queue, queueAfter...)
 
 		for _, j := range queue {
+			log.Info.Printf("[%d] negate %d", i, j)
 			solutions, err = z3Solver.Solve(j)
 			if err == nil {
+				log.Info.Printf("[%d] sat %d", i, j)
 				break
 			} else if _, ok := err.(solver.UnsatError); ok {
-				log.Println("unsat")
+				log.Info.Printf("[%d] unsat %d", i, j)
 			} else {
 				return nil, errors.Wrap(err, "failed to solve assertions")
 			}
