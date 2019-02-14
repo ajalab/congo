@@ -177,9 +177,15 @@ func (prog *Program) DumpRunnerAST(dest io.Writer) error {
 	return format.Node(dest, token.NewFileSet(), prog.runnerFile)
 }
 
-// DumpRunnerSSA dumps the runner SSA into dest.
-func (prog *Program) DumpRunnerSSA(dest io.Writer) error {
-	_, err := prog.runnerPackage.Func("main").WriteTo(dest)
+// DumpSSA dumps the SSA-format code into dest.
+func (prog *Program) DumpSSA(dest io.Writer) error {
+	var err error
+	_, err = prog.runnerPackage.Func("main").WriteTo(dest)
+	if err != nil {
+		return err
+	}
+
+	_, err = prog.targetFunc.WriteTo(dest)
 	return err
 }
 

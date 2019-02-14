@@ -18,16 +18,10 @@ var (
 	minCoverage = flag.Float64("coverage", 1.0, "minimum coverage")
 	maxExec     = flag.Uint("maxexec", 10, "maximum execution time")
 	o           = flag.String("o", "", "destination path for generated test code")
-	verbose     = flag.Bool("v", false, "verbose output (debug info)")
+	ssa         = flag.Bool("ssa", false, "dump SSA")
 	funcName    = flag.String("f", "", "name of the target function")
 	runner      = flag.String("r", "", "test template")
 )
-
-/*
-func init() {
-	log.SetFlags(log.Llongfile)
-}
-*/
 
 func main() {
 	flag.Parse()
@@ -38,7 +32,7 @@ func main() {
 		return
 	}
 	if *funcName == "" {
-		fmt.Fprintln(os.Stderr, "function name must be specified by -f option")
+		fmt.Fprintln(os.Stderr, "function name must be specified with -f option")
 		flag.Usage()
 		return
 	}
@@ -70,9 +64,9 @@ func main() {
 	if err != nil {
 		log.Error.Fatalf("failed to load: %+v", err)
 	}
-	if *verbose {
-		prog.DumpRunnerAST(os.Stderr)
-		prog.DumpRunnerSSA(os.Stderr)
+	if *ssa {
+		prog.DumpSSA(os.Stderr)
+		return
 	}
 
 	result, err := prog.Execute(*maxExec, *minCoverage)
