@@ -74,7 +74,7 @@ func main() {
 		return
 	}
 
-	result, err := c.Execute(*funcName, *maxExec, *minCoverage)
+	result, err := c.Execute(*funcName)
 	if err != nil {
 		log.Error.Fatalf("failed to perform concolic execution: %+v", err)
 	}
