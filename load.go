@@ -33,12 +33,28 @@ func LoadPackage(packageName string) (*packages.Package, error) {
 	return pkgs[0], nil
 }
 
+// Config specifies the (optional) parameters for concolic execution.
+// Options are ignored when a field has the zero value.
+type Config struct {
+	// FuncNames is a list of functions that we generate tests for.
+	FuncNames []string
+	// MaxExec is the maximum number of executions allowed.
+	MaxExec uint
+	// MinCoverage is the criteria that tells the least coverage ratio to achieve.
+	MinCoverage float64
+}
+
 // Load loads the target program.
-func Load(targetPackagePath string, runnerPackagePath string, funcName string) (*Congo, error) {
-	config := &packages.Config{
+func Load(config *Config, runnerPackagePath, targetPackagePath string) (*Congo, error) {
+	if config == nil {
+		config = &Config{}
+	}
+
+	funcName := config.FuncNames[0]
+	pConfig := &packages.Config{
 		Mode: packages.LoadAllSyntax,
 	}
-	pkgs, err := packages.Load(config, runnerPackagePath)
+	pkgs, err := packages.Load(pConfig, runnerPackagePath)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load packages")
 	}

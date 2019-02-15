@@ -60,7 +60,12 @@ func main() {
 		defer os.Remove(runnerPackagePath)
 	}
 
-	c, err := congo.Load(targetPackage.PkgPath, runnerPackagePath, *funcName)
+	config := &congo.Config{
+		FuncNames:   []string{*funcName},
+		MaxExec:     *maxExec,
+		MinCoverage: *minCoverage,
+	}
+	c, err := congo.Load(config, targetPackage.PkgPath, runnerPackagePath)
 	if err != nil {
 		log.Error.Fatalf("failed to load: %+v", err)
 	}

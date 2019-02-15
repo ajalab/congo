@@ -30,7 +30,10 @@ func TestRun(t *testing.T) {
 			}
 			defer os.Remove(runnerPackagePath)
 
-			c, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
+			config := &Config{
+				FuncNames: []string{tc.funcName},
+			}
+			c, err := Load(config, runnerPackagePath, targetPackage.PkgPath)
 			if err != nil {
 				t.Fatalf("Config.Open: %v", err)
 			}
@@ -70,7 +73,12 @@ func testExecute(testCases []executeTestCase, t *testing.T) {
 			}
 			defer os.Remove(runnerPackagePath)
 
-			prog, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
+			config := &Config{
+				FuncNames:   []string{tc.funcName},
+				MaxExec:     tc.maxExec,
+				MinCoverage: tc.minCoverage,
+			}
+			prog, err := Load(config, runnerPackagePath, targetPackage.PkgPath)
 			if err != nil {
 				t.Fatalf("Config.Open: %v\n", err)
 			}
