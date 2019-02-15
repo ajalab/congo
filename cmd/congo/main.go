@@ -65,7 +65,7 @@ func main() {
 		MaxExec:     *maxExec,
 		MinCoverage: *minCoverage,
 	}
-	c, err := congo.Load(config, targetPackage.PkgPath, runnerPackagePath)
+	c, err := congo.Load(config, runnerPackagePath, targetPackage.PkgPath)
 	if err != nil {
 		log.Error.Fatalf("failed to load: %+v", err)
 	}
