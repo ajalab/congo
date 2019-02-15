@@ -44,7 +44,7 @@ type Congo struct {
 
 // Execute executes concolic execution.
 // The iteration time is bounded by maxExec and stopped when minCoverage is accomplished.
-func (c *Congo) Execute(funcName string, maxExec uint, minCoverage float64) (*ExecuteResult, error) {
+func (c *Congo) Execute(funcName string) (*ExecuteResult, error) {
 	target, ok := c.targets[funcName]
 	if !ok {
 		return nil, errors.Errorf("function %s does not exist", funcName)
@@ -59,7 +59,7 @@ func (c *Congo) Execute(funcName string, maxExec uint, minCoverage float64) (*Ex
 		solutions[i] = solver.NewIndefinite(symbol.Type())
 	}
 
-	for i := uint(0); i < maxExec; i++ {
+	for i := uint(0); i < target.maxExec; i++ {
 		values := make([]interface{}, n)
 		// Assign a zero value if the concrete value is nil.
 		for j, sol := range solutions {
@@ -99,12 +99,12 @@ func (c *Congo) Execute(funcName string, maxExec uint, minCoverage float64) (*Ex
 		// Also exit when the execution count minus one is equal to maxExec to avoid unnecessary constraint solver call.
 		coverage = float64(len(covered)) / float64(len(target.f.Blocks))
 		log.Info.Printf("[%d] coverage: %.3f", i, coverage)
-		if coverage >= minCoverage {
+		if coverage >= target.minCoverage {
 			log.Info.Printf("[%d] stop because the coverage criteria has been satisfied.", i)
 			break
 		}
 
-		if i == maxExec-1 {
+		if i == target.maxExec-1 {
 			log.Info.Printf("[%d] stop because the runnign count has reached the limit", i)
 		}
 

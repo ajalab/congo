@@ -83,7 +83,7 @@ func testExecute(testCases []executeTestCase, t *testing.T) {
 				t.Fatalf("Config.Open: %v\n", err)
 			}
 
-			res, err := prog.Execute(tc.funcName, tc.maxExec, tc.minCoverage)
+			res, err := prog.Execute(tc.funcName)
 			if err != nil {
 				t.Fatalf("Program.Execute: %v\n", err)
 			}

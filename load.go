@@ -156,6 +156,8 @@ func Load(config *Config, runnerPackagePath, targetPackagePath string) (*Congo, 
 	targets[funcName] = &Target{
 		f:       targetPackageSSA.Func(funcName),
 		symbols: symbols,
+		maxExec: config.MaxExec,
+		minCoverage: config.MinCoverage,
 	}
 
 	return &Congo{
