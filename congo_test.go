@@ -19,7 +19,7 @@ func TestRun(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			targetPackage, err := LoadTargetPackage(tc.packageName)
+			targetPackage, err := LoadPackage(tc.packageName)
 			if err != nil {
 				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
 			}
@@ -59,7 +59,7 @@ type executeTestCase struct {
 func testExecute(testCases []executeTestCase, t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			targetPackage, err := LoadTargetPackage(tc.packageName)
+			targetPackage, err := LoadPackage(tc.packageName)
 			if err != nil {
 				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
 			}

@@ -36,7 +36,6 @@ func main() {
 		flag.Usage()
 		return
 	}
-
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
@@ -45,10 +44,11 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	packageName := flag.Arg(0)
-	targetPackage, err := congo.LoadTargetPackage(packageName)
+
+	targetPackageName := flag.Arg(0)
+	targetPackage, err := congo.LoadPackage(targetPackageName)
 	if err != nil {
-		log.Error.Fatalf("failed to load package %s: %+v", packageName, err)
+		log.Error.Fatalf("failed to load package %s: %+v", targetPackageName, err)
 	}
 
 	runnerPackagePath := *runner

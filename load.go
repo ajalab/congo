@@ -14,8 +14,8 @@ import (
 
 const congoSymbolPackagePath = "github.com/ajalab/congo/symbol"
 
-// LoadTargetPackage loads the target package.
-func LoadTargetPackage(packageName string) (*packages.Package, error) {
+// LoadPackage loads a Go package from a package path or a file path.
+func LoadPackage(packageName string) (*packages.Package, error) {
 	conf := &packages.Config{
 		Mode: packages.LoadTypes,
 	}
