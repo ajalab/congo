@@ -17,27 +17,42 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Program is a type that contains information of the target program and symbols.
+// Program is a type that contains information of the target program.
 type Program struct {
 	runnerFile         *ast.File
 	runnerTypesInfo    *types.Info
 	runnerPackage      *ssa.Package
 	targetPackage      *ssa.Package
 	congoSymbolPackage *ssa.Package
-	targetFunc         *ssa.Function
-	symbols            []ssa.Value
+}
+
+// Target is a type that contains the single target of concolic testing (function and set of symbols).
+type Target struct {
+	f       *ssa.Function
+	symbols []ssa.Value
+}
+
+// Congo is a type that contains the program and dict of targets
+// (keys are names of target function).
+type Congo struct {
+	program *Program
+	targets map[string]*Target
 }
 
 // Execute executes concolic execution.
 // The iteration time is bounded by maxExec and stopped when minCoverage is accomplished.
-func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult, error) {
-	n := len(prog.symbols)
+func (c *Congo) Execute(funcName string, maxExec uint, minCoverage float64) (*ExecuteResult, error) {
+	target, ok := c.targets[funcName]
+	if !ok {
+		return nil, errors.Errorf("function %s does not exist", funcName)
+	}
+	n := len(target.symbols)
 	solutions := make([]solver.Solution, n)
 	covered := make(map[*ssa.BasicBlock]struct{})
 	coverage := 0.0
 	var runResults []*RunResult
 
-	for i, symbol := range prog.symbols {
+	for i, symbol := range target.symbols {
 		solutions[i] = solver.NewIndefinite(symbol.Type())
 	}
 
@@ -51,7 +66,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		log.Info.Printf("[%d] run: %v", i, values)
 
 		// Interpret the program with the current symbol values.
-		result, err := prog.Run(values)
+		result, err := c.Run(funcName, values)
 		if err != nil {
 			log.Info.Printf("[%d] panic", i)
 		}
@@ -60,7 +75,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		nNewCoveredBlks := 0
 		for _, instr := range result.Instrs {
 			b := instr.Block()
-			if b.Parent() == prog.targetFunc {
+			if b.Parent() == target.f {
 				if _, ok := covered[b]; !ok {
 					covered[b] = struct{}{}
 					nNewCoveredBlks++
@@ -79,7 +94,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 
 		// Compute the coverage and exit if it exceeds the minCoverage.
 		// Also exit when the execution count minus one is equal to maxExec to avoid unnecessary constraint solver call.
-		coverage = float64(len(covered)) / float64(len(prog.targetFunc.Blocks))
+		coverage = float64(len(covered)) / float64(len(target.f.Blocks))
 		log.Info.Printf("[%d] coverage: %.3f", i, coverage)
 		if coverage >= minCoverage {
 			log.Info.Printf("[%d] stop because the coverage criteria has been satisfied.", i)
@@ -90,7 +105,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 			log.Info.Printf("[%d] stop because the runnign count has reached the limit", i)
 		}
 
-		z3Solver, err := solver.CreateZ3Solver(prog.symbols, result.Instrs, result.ExitCode == 0)
+		z3Solver, err := solver.CreateZ3Solver(target.symbols, result.Instrs, result.ExitCode == 0)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create a solver")
 		}
@@ -130,7 +145,7 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 	}
 
 	symbolTypes := make([]types.Type, n)
-	for i, symbol := range prog.symbols {
+	for i, symbol := range target.symbols {
 		symbolTypes[i] = symbol.Type()
 	}
 
@@ -138,21 +153,25 @@ func (prog *Program) Execute(maxExec uint, minCoverage float64) (*ExecuteResult,
 		Coverage:           coverage,
 		SymbolTypes:        symbolTypes,
 		RunResults:         runResults,
-		runnerFile:         prog.runnerFile,
-		runnerTypesInfo:    prog.runnerTypesInfo,
-		runnerPackage:      prog.runnerPackage.Pkg,
-		targetPackage:      prog.targetPackage.Pkg,
-		congoSymbolPackage: prog.congoSymbolPackage.Pkg,
-		targetFuncSig:      prog.targetFunc.Signature,
-		targetFuncName:     prog.targetFunc.Name(),
+		runnerFile:         c.program.runnerFile,
+		runnerTypesInfo:    c.program.runnerTypesInfo,
+		runnerPackage:      c.program.runnerPackage.Pkg,
+		targetPackage:      c.program.targetPackage.Pkg,
+		congoSymbolPackage: c.program.congoSymbolPackage.Pkg,
+		targetFuncSig:      target.f.Signature,
+		targetFuncName:     funcName,
 	}, nil
 }
 
 // Run runs the program by the interpreter provided by interp module.
-func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error) {
+func (c *Congo) Run(funcName string, values []interface{}) (*interp.CongoInterpResult, error) {
+	target, ok := c.targets[funcName]
+	if !ok {
+		return nil, errors.Errorf("function %s does not exist", funcName)
+	}
 	n := len(values)
 	symbolValues := make([]interp.SymbolicValue, n)
-	for i, symbol := range prog.symbols {
+	for i, symbol := range target.symbols {
 		symbolValues[i] = interp.SymbolicValue{
 			Value: values[i],
 			Type:  symbol.Type(),
@@ -162,8 +181,8 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 	interp.CapturedOutput = new(bytes.Buffer)
 	mode := interp.DisableRecover // interp.EnableTracing
 	return interp.Interpret(
-		prog.runnerPackage,
-		prog.targetFunc,
+		c.program.runnerPackage,
+		target.f,
 		symbolValues,
 		mode,
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},
@@ -173,19 +192,24 @@ func (prog *Program) Run(values []interface{}) (*interp.CongoInterpResult, error
 }
 
 // DumpRunnerAST dumps the runner AST file into dest.
-func (prog *Program) DumpRunnerAST(dest io.Writer) error {
-	return format.Node(dest, token.NewFileSet(), prog.runnerFile)
+func (c *Congo) DumpRunnerAST(dest io.Writer) error {
+	return format.Node(dest, token.NewFileSet(), c.program.runnerFile)
 }
 
 // DumpSSA dumps the SSA-format code into dest.
-func (prog *Program) DumpSSA(dest io.Writer) error {
+func (c *Congo) DumpSSA(dest io.Writer) error {
 	var err error
-	_, err = prog.runnerPackage.Func("main").WriteTo(dest)
+	_, err = c.program.runnerPackage.Func("main").WriteTo(dest)
 	if err != nil {
 		return err
 	}
 
-	_, err = prog.targetFunc.WriteTo(dest)
+	for _, target := range c.targets {
+		_, err = target.f.WriteTo(dest)
+		if err != nil {
+			break
+		}
+	}
 	return err
 }
 

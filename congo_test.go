@@ -30,18 +30,19 @@ func TestRun(t *testing.T) {
 			}
 			defer os.Remove(runnerPackagePath)
 
-			prog, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
+			c, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
 			if err != nil {
 				t.Fatalf("Config.Open: %v", err)
 			}
 
-			n := len(prog.symbols)
+			target := c.targets[tc.funcName]
+			n := len(target.symbols)
 			values := make([]interface{}, n)
-			for i, symbol := range prog.symbols {
+			for i, symbol := range target.symbols {
 				values[i] = zero(symbol.Type())
 			}
 
-			if _, err = prog.Run(values); err != nil {
+			if _, err = c.Run(tc.funcName, values); err != nil {
 				t.Errorf("prog.Run: %v", err)
 			}
 		})
@@ -74,7 +75,7 @@ func testExecute(testCases []executeTestCase, t *testing.T) {
 				t.Fatalf("Config.Open: %v\n", err)
 			}
 
-			res, err := prog.Execute(tc.maxExec, tc.minCoverage)
+			res, err := prog.Execute(tc.funcName, tc.maxExec, tc.minCoverage)
 			if err != nil {
 				t.Fatalf("Program.Execute: %v\n", err)
 			}

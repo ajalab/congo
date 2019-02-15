@@ -60,16 +60,16 @@ func main() {
 		defer os.Remove(runnerPackagePath)
 	}
 
-	prog, err := congo.Load(targetPackage.PkgPath, runnerPackagePath, *funcName)
+	c, err := congo.Load(targetPackage.PkgPath, runnerPackagePath, *funcName)
 	if err != nil {
 		log.Error.Fatalf("failed to load: %+v", err)
 	}
 	if *ssa {
-		prog.DumpSSA(os.Stderr)
+		c.DumpSSA(os.Stderr)
 		return
 	}
 
-	result, err := prog.Execute(*maxExec, *minCoverage)
+	result, err := c.Execute(*funcName, *maxExec, *minCoverage)
 	if err != nil {
 		log.Error.Fatalf("failed to perform concolic execution: %+v", err)
 	}

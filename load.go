@@ -34,7 +34,7 @@ func LoadTargetPackage(packageName string) (*packages.Package, error) {
 }
 
 // Load loads the target program.
-func Load(targetPackagePath string, runnerPackagePath string, funcName string) (*Program, error) {
+func Load(targetPackagePath string, runnerPackagePath string, funcName string) (*Congo, error) {
 	config := &packages.Config{
 		Mode: packages.LoadAllSyntax,
 	}
@@ -128,13 +128,22 @@ func Load(targetPackagePath string, runnerPackagePath string, funcName string) (
 		symbols[subst.i] = subst.v
 	}
 
-	return &Program{
+	program := &Program{
 		runnerFile:         runnerPackage.Syntax[0],
 		runnerTypesInfo:    runnerPackage.TypesInfo,
 		runnerPackage:      runnerPackageSSA,
 		targetPackage:      targetPackageSSA,
 		congoSymbolPackage: congoSymbolPackageSSA,
-		targetFunc:         targetPackageSSA.Func(funcName),
-		symbols:            symbols,
+	}
+
+	targets := make(map[string]*Target)
+	targets[funcName] = &Target{
+		f:       targetPackageSSA.Func(funcName),
+		symbols: symbols,
+	}
+
+	return &Congo{
+		program: program,
+		targets: targets,
 	}, nil
 }
