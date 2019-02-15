@@ -30,6 +30,9 @@ type Program struct {
 type Target struct {
 	f       *ssa.Function
 	symbols []ssa.Value
+
+	maxExec     uint
+	minCoverage float64
 }
 
 // Congo is a type that contains the program and dict of targets
