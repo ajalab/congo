@@ -2,13 +2,12 @@ package congo
 
 import (
 	"fmt"
-	"os"
 	"testing"
 )
 
 func TestRun(t *testing.T) {
 	testCases := []struct {
-		packageName string
+		packagePath string
 		funcName    string
 	}{
 		{"github.com/ajalab/congo/testdata", "BranchLessThan"},
@@ -18,22 +17,11 @@ func TestRun(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			targetPackage, err := LoadPackage(tc.packageName)
-			if err != nil {
-				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
-			}
-
-			runnerPackagePath, err := GenerateRunner(targetPackage, tc.funcName)
-			if err != nil {
-				t.Fatalf("failed to generate a runner: %v", err)
-			}
-			defer os.Remove(runnerPackagePath)
-
+		t.Run(fmt.Sprintf("%s.%s", tc.packagePath, tc.funcName), func(t *testing.T) {
 			config := &Config{
 				FuncNames: []string{tc.funcName},
 			}
-			c, err := Load(config, runnerPackagePath, targetPackage.PkgPath)
+			c, err := Load(config, tc.packagePath)
 			if err != nil {
 				t.Fatalf("Config.Open: %v", err)
 			}
@@ -53,7 +41,7 @@ func TestRun(t *testing.T) {
 }
 
 type executeTestCase struct {
-	packageName string
+	packagePath string
 	funcName    string
 	maxExec     uint
 	minCoverage float64
@@ -61,24 +49,13 @@ type executeTestCase struct {
 
 func testExecute(testCases []executeTestCase, t *testing.T) {
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			targetPackage, err := LoadPackage(tc.packageName)
-			if err != nil {
-				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
-			}
-
-			runnerPackagePath, err := GenerateRunner(targetPackage, tc.funcName)
-			if err != nil {
-				t.Fatalf("failed to generate a runner: %v", err)
-			}
-			defer os.Remove(runnerPackagePath)
-
+		t.Run(fmt.Sprintf("%s.%s", tc.packagePath, tc.funcName), func(t *testing.T) {
 			config := &Config{
 				FuncNames:   []string{tc.funcName},
 				MaxExec:     tc.maxExec,
 				MinCoverage: tc.minCoverage,
 			}
-			prog, err := Load(config, runnerPackagePath, targetPackage.PkgPath)
+			prog, err := Load(config, tc.packagePath)
 			if err != nil {
 				t.Fatalf("Config.Open: %v\n", err)
 			}

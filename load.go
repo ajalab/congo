@@ -3,6 +3,7 @@ package congo
 import (
 	"go/constant"
 	"go/token"
+	"os"
 
 	"golang.org/x/tools/go/packages"
 
@@ -14,21 +15,22 @@ import (
 
 const congoSymbolPackagePath = "github.com/ajalab/congo/symbol"
 
-// LoadPackage loads a Go package from a package path or a file path.
-func LoadPackage(packageName string) (*packages.Package, error) {
+func loadTargetPackage(targetPackagePath string) (*packages.Package, error) {
 	conf := &packages.Config{
-		Mode: packages.LoadTypes,
+		Mode: packages.LoadSyntax,
 	}
-	query := packageName
-	if packageName[len(packageName)-3:] == ".go" {
-		query = "file=" + packageName
+
+	query := targetPackagePath
+	if targetPackagePath[len(targetPackagePath)-3:] == ".go" {
+		// targetPackagePath is a file path to a Go file
+		query = "file=" + targetPackagePath
 	}
 	pkgs, err := packages.Load(conf, query)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load the target package")
+		return nil, errors.Wrapf(err, "failed to load the target package %s", targetPackagePath)
 	}
 	if len(pkgs) == 0 {
-		return nil, errors.New("no packages could be loaded")
+		return nil, errors.Errorf("no packages could be loaded for path %s", targetPackagePath)
 	}
 	return pkgs[0], nil
 }
@@ -40,16 +42,38 @@ type Config struct {
 	FuncNames []string
 	// MaxExec is the maximum number of executions allowed.
 	MaxExec uint
-	// MinCoverage is the criteria that tells the least coverage ratio to achieve.
+	// MinCoverage is the criteria that specifies the least coverage ratio to achieve.
 	MinCoverage float64
+	// Runner is the path to the Go file that calls the target function.
+	// Automatically generated if empty string is specified.
+	Runner string
 }
 
 // Load loads the target program.
-func Load(config *Config, runnerPackagePath, targetPackagePath string) (*Congo, error) {
+func Load(config *Config, targetPackagePath string) (*Congo, error) {
 	if config == nil {
 		config = &Config{}
 	}
 
+	targetPackage, err := loadTargetPackage(targetPackagePath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
+	}
+
+	runnerPackageFPath := config.Runner
+	if runnerPackageFPath == "" {
+		runnerPackageFPath, err = generateRunner(targetPackage, config.FuncNames[0])
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to generate a runner")
+		}
+		defer os.Remove(runnerPackageFPath)
+	}
+
+	targetPackageIPath := targetPackage.PkgPath
+	return load(config, targetPackageIPath, runnerPackageFPath)
+}
+
+func load(config *Config, targetPackageIPath, runnerPackagePath string) (*Congo, error) {
 	funcName := config.FuncNames[0]
 	pConfig := &packages.Config{
 		Mode: packages.LoadAllSyntax,
@@ -80,7 +104,7 @@ func Load(config *Config, runnerPackagePath, targetPackagePath string) (*Congo, 
 	}
 
 	runnerPackage := pkgs[runnerPackageIdx]
-	targetPackage := runnerPackage.Imports[targetPackagePath]
+	targetPackage := runnerPackage.Imports[targetPackageIPath]
 	congoSymbolPackage := runnerPackage.Imports[congoSymbolPackagePath]
 
 	ssaProg, ssaPkgs := ssautil.AllPackages(pkgs, ssa.BuilderMode(0))
@@ -154,9 +178,9 @@ func Load(config *Config, runnerPackagePath, targetPackagePath string) (*Congo, 
 
 	targets := make(map[string]*Target)
 	targets[funcName] = &Target{
-		f:       targetPackageSSA.Func(funcName),
-		symbols: symbols,
-		maxExec: config.MaxExec,
+		f:           targetPackageSSA.Func(funcName),
+		symbols:     symbols,
+		maxExec:     config.MaxExec,
 		minCoverage: config.MinCoverage,
 	}
 

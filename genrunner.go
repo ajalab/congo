@@ -13,8 +13,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// GenerateRunner generates the runner package and returns its filepath.
-func GenerateRunner(targetPackage *packages.Package, funcName string) (string, error) {
+func generateRunner(targetPackage *packages.Package, funcName string) (string, error) {
 	runnerFile, err := generateRunnerAST(targetPackage, funcName)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to generate runner AST file")
@@ -23,14 +22,14 @@ func GenerateRunner(targetPackage *packages.Package, funcName string) (string, e
 	if err != nil {
 		return "", err
 	}
-	runnerPackagePath := runnerTmpFile.Name()
+	runnerPackageFPath := runnerTmpFile.Name()
 
 	format.Node(runnerTmpFile, token.NewFileSet(), runnerFile)
 	if err := runnerTmpFile.Close(); err != nil {
 		return "", err
 	}
 
-	return runnerPackagePath, nil
+	return runnerPackageFPath, nil
 }
 
 // generateRunner generates the AST of a test runner.

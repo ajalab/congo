@@ -45,27 +45,13 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	targetPackageName := flag.Arg(0)
-	targetPackage, err := congo.LoadPackage(targetPackageName)
-	if err != nil {
-		log.Error.Fatalf("failed to load package %s: %+v", targetPackageName, err)
-	}
-
-	runnerPackagePath := *runner
-	if runnerPackagePath == "" {
-		runnerPackagePath, err = congo.GenerateRunner(targetPackage, *funcName)
-		if err != nil {
-			log.Error.Fatalf("failed to generate a runner: %v", err)
-		}
-		defer os.Remove(runnerPackagePath)
-	}
-
+	targetPackagePath := flag.Arg(0)
 	config := &congo.Config{
 		FuncNames:   []string{*funcName},
 		MaxExec:     *maxExec,
 		MinCoverage: *minCoverage,
 	}
-	c, err := congo.Load(config, runnerPackagePath, targetPackage.PkgPath)
+	c, err := congo.Load(config, targetPackagePath)
 	if err != nil {
 		log.Error.Fatalf("failed to load: %+v", err)
 	}
