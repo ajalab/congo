@@ -105,7 +105,8 @@ func loadTargetFuncs(
 					if err != nil {
 						return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 					}
-					targets[i] = &Target{ExecuteOption: eo}
+					target := &Target{name: name, ExecuteOption: eo}
+					targets[i] = target
 					break
 				}
 			}
@@ -116,12 +117,14 @@ func loadTargetFuncs(
 	for i, f := range fs {
 		for _, decl := range f.Decls {
 			if funcDecl, ok := decl.(*ast.FuncDecl); ok {
+				name := funcDecl.Name.String()
 				eo, err := parseAnnotation(funcDecl, cmaps[i][funcDecl])
 				eo.Fill(argEO, false).Fill(&defaultExecuteOption, false)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 				}
-				targets = append(targets, &Target{ExecuteOption: eo})
+				target := &Target{name: name, ExecuteOption: eo}
+				targets = append(targets, target)
 			}
 		}
 	}

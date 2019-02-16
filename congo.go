@@ -59,6 +59,7 @@ func (eo *ExecuteOption) Fill(src *ExecuteOption, overwrite bool) *ExecuteOption
 
 // Target is a type that contains the single target of concolic testing (function and set of symbols).
 type Target struct {
+	name    string
 	f       *ssa.Function
 	symbols []ssa.Value
 
