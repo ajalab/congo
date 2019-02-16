@@ -93,6 +93,7 @@ func loadTargetFuncs(
 
 	if len(funcNames) > 0 {
 		targets := make([]*Target, len(funcNames))
+	FUNC:
 		for i, name := range funcNames {
 			for j, f := range fs {
 				obj := f.Scope.Lookup(name)
@@ -107,9 +108,10 @@ func loadTargetFuncs(
 					}
 					target := &Target{name: name, ExecuteOption: eo}
 					targets[i] = target
-					break
+					continue FUNC
 				}
 			}
+			return nil, errors.Errorf("function %s does not exist in %s", name, targetPackagePath)
 		}
 		return targets, nil
 	}
