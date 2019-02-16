@@ -55,8 +55,13 @@ func parseAnnotation(funcDecl *ast.FuncDecl, cgroups []*ast.CommentGroup) (Execu
 	return ExecuteOption{}, nil
 }
 
-func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, config *Config) ([]*Target, error) {
-	// 4 cases:
+func loadTargetFuncs(
+	targetPackagePath string,
+	targetPackage *packages.Package,
+	funcNames []string,
+	argEO *ExecuteOption,
+) ([]*Target, error) {
+	// cases:
 	// 1. targetPackagePath is a file path to a Go file and len(funcNames) is 0.
 	// 2. targetPackagePath is a file path to a Go file and len(funcNames) is greater than 0 .
 	// 3. targetPackagePath is an import path to the target package and len(funcNames) is 0.
@@ -86,7 +91,6 @@ func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, 
 		cmaps[i] = ast.NewCommentMap(targetPackage.Fset, f, f.Comments)
 	}
 
-	funcNames := config.FuncNames
 	if len(funcNames) > 0 {
 		targets := make([]*Target, len(funcNames))
 		for i, name := range funcNames {
@@ -97,7 +101,7 @@ func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, 
 				}
 				if funcDecl, ok := obj.Decl.(*ast.FuncDecl); ok {
 					eo, err := parseAnnotation(funcDecl, cmaps[j][funcDecl])
-					eo.Fill(&config.ExecuteOption, true).Fill(&defaultExecuteOption, false)
+					eo.Fill(argEO, true).Fill(&defaultExecuteOption, false)
 					if err != nil {
 						return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 					}
@@ -113,7 +117,7 @@ func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, 
 		for _, decl := range f.Decls {
 			if funcDecl, ok := decl.(*ast.FuncDecl); ok {
 				eo, err := parseAnnotation(funcDecl, cmaps[i][funcDecl])
-				eo.Fill(&config.ExecuteOption, false).Fill(&defaultExecuteOption, false)
+				eo.Fill(argEO, false).Fill(&defaultExecuteOption, false)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 				}
@@ -141,7 +145,7 @@ func Load(config *Config, targetPackagePath string) (*Congo, error) {
 		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
 	}
 
-	if _, err := loadTargetFuncs(targetPackagePath, targetPackage, config); err != nil {
+	if _, err := loadTargetFuncs(targetPackagePath, targetPackage, config.FuncNames, &config.ExecuteOption); err != nil {
 		return nil, err
 	}
 
