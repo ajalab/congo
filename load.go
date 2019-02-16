@@ -1,9 +1,11 @@
 package congo
 
 import (
+	"go/ast"
 	"go/constant"
 	"go/token"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/tools/go/packages"
 
@@ -21,8 +23,7 @@ func loadTargetPackage(targetPackagePath string) (*packages.Package, error) {
 	}
 
 	query := targetPackagePath
-	if isGoPath(query) {
-		// targetPackagePath is a file path to a Go file
+	if isGoFilePath(query) {
 		query = "file=" + targetPackagePath
 	}
 	pkgs, err := packages.Load(conf, query)
@@ -35,7 +36,7 @@ func loadTargetPackage(targetPackagePath string) (*packages.Package, error) {
 	return pkgs[0], nil
 }
 
-func isGoPath(path string) bool {
+func isGoFilePath(path string) bool {
 	return path[len(path)-3:] == ".go"
 }
 
@@ -53,6 +54,89 @@ type Config struct {
 	Runner string
 }
 
+func parseTargetAnnotation(funcDecl *ast.FuncDecl, cgroups []*ast.CommentGroup) (*Target, error) {
+	return nil, nil
+}
+
+func newTargetFromConfig(funcDecl *ast.FuncDecl, config *Config) *Target {
+	return &Target{
+		maxExec:     config.MaxExec,
+		minCoverage: config.MinCoverage,
+	}
+}
+
+func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, config *Config) ([]*Target, error) {
+	// 4 cases:
+	// 1. targetPackagePath is a file path to a Go file and len(funcNames) is 0.
+	// 2. targetPackagePath is a file path to a Go file and len(funcNames) is greater than 0 .
+	// 3. targetPackagePath is an import path to the target package and len(funcNames) is 0.
+	// 4. targetPackagePath is an import path to the target package and len(funcNames) is greater than 0.
+
+	var fs []*ast.File
+	if isGoFilePath(targetPackagePath) {
+		targetPackageAbsPath, err := filepath.Abs(targetPackagePath)
+		if err != nil {
+			return nil, err
+		}
+		for i, fpath := range targetPackage.CompiledGoFiles {
+			if fpath == targetPackageAbsPath {
+				fs = append(fs, targetPackage.Syntax[i])
+				break
+			}
+		}
+	} else {
+		fs = targetPackage.Syntax
+	}
+	if len(fs) == 0 {
+		return nil, errors.New("annotations could not be loaded")
+	}
+
+	cmaps := make([]ast.CommentMap, len(fs))
+	for i, f := range fs {
+		cmaps[i] = ast.NewCommentMap(targetPackage.Fset, f, f.Comments)
+	}
+
+	funcNames := config.FuncNames
+	if len(funcNames) > 0 {
+		targets := make([]*Target, len(funcNames))
+		for i, name := range funcNames {
+			for j, f := range fs {
+				obj := f.Scope.Lookup(name)
+				if obj == nil {
+					continue
+				}
+				if funcDecl, ok := obj.Decl.(*ast.FuncDecl); ok {
+					target, err := parseTargetAnnotation(funcDecl, cmaps[j][funcDecl])
+					if err != nil {
+						return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
+					}
+					if target == nil {
+						target = newTargetFromConfig(funcDecl, config)
+					}
+					targets[i] = target
+					break
+				}
+			}
+		}
+		return targets, nil
+	}
+	var targets []*Target
+	for i, f := range fs {
+		for _, decl := range f.Decls {
+			if funcDecl, ok := decl.(*ast.FuncDecl); ok {
+				target, err := parseTargetAnnotation(funcDecl, cmaps[i][funcDecl])
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
+				}
+				if target != nil {
+					targets = append(targets, target)
+				}
+			}
+		}
+	}
+	return targets, nil
+}
+
 // Load loads the target program.
 // targetPackagePath is either
 // - a file path (e.g., foo/bar.go) to the target package
@@ -68,6 +152,10 @@ func Load(config *Config, targetPackagePath string) (*Congo, error) {
 	targetPackage, err := loadTargetPackage(targetPackagePath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
+	}
+
+	if _, err := loadTargetFuncs(targetPackagePath, targetPackage, config); err != nil {
+		return nil, err
 	}
 
 	// Generate a runner file if config.Runner is nil.
