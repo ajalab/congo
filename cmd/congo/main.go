@@ -15,8 +15,8 @@ import (
 
 var (
 	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to file")
-	minCoverage = flag.Float64("coverage", 1.0, "minimum coverage")
-	maxExec     = flag.Uint("maxexec", 10, "maximum execution time")
+	minCoverage = flag.Float64("coverage", 0.0, "minimum coverage")
+	maxExec     = flag.Uint("maxexec", 0, "maximum execution time")
 	o           = flag.String("o", "", "destination path for generated test code")
 	ssa         = flag.Bool("ssa", false, "dump SSA")
 	funcName    = flag.String("f", "", "name of the target function")
@@ -47,9 +47,11 @@ func main() {
 
 	targetPackagePath := flag.Arg(0)
 	config := &congo.Config{
-		FuncNames:   []string{*funcName},
-		MaxExec:     *maxExec,
-		MinCoverage: *minCoverage,
+		FuncNames: []string{*funcName},
+		ExecuteOption: congo.ExecuteOption{
+			MaxExec:     *maxExec,
+			MinCoverage: *minCoverage,
+		},
 	}
 	c, err := congo.Load(config, targetPackagePath)
 	if err != nil {

@@ -51,9 +51,11 @@ func testExecute(testCases []executeTestCase, t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%s.%s", tc.packagePath, tc.funcName), func(t *testing.T) {
 			config := &Config{
-				FuncNames:   []string{tc.funcName},
-				MaxExec:     tc.maxExec,
-				MinCoverage: tc.minCoverage,
+				FuncNames: []string{tc.funcName},
+				ExecuteOption: ExecuteOption{
+					MaxExec:     tc.maxExec,
+					MinCoverage: tc.minCoverage,
+				},
 			}
 			prog, err := Load(config, tc.packagePath)
 			if err != nil {

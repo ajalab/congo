@@ -26,13 +26,43 @@ type Program struct {
 	congoSymbolPackage *ssa.Package
 }
 
+// ExecuteOption is a type that contains options to perform concolic execution on a target function.
+type ExecuteOption struct {
+	MaxExec     uint
+	MinCoverage float64
+}
+
+var defaultExecuteOption = ExecuteOption{
+	MaxExec:     10,
+	MinCoverage: 1.0,
+}
+
+// Fill fills the fields in ExecuteOption with those in src.
+func (eo *ExecuteOption) Fill(src *ExecuteOption, overwrite bool) *ExecuteOption {
+	if overwrite {
+		if src.MaxExec != 0 {
+			eo.MaxExec = src.MaxExec
+		}
+		if src.MinCoverage != 0 {
+			eo.MinCoverage = src.MinCoverage
+		}
+	} else {
+		if eo.MaxExec == 0 {
+			eo.MaxExec = src.MaxExec
+		}
+		if eo.MinCoverage == 0.0 {
+			eo.MinCoverage = src.MinCoverage
+		}
+	}
+	return eo
+}
+
 // Target is a type that contains the single target of concolic testing (function and set of symbols).
 type Target struct {
 	f       *ssa.Function
 	symbols []ssa.Value
 
-	maxExec     uint
-	minCoverage float64
+	ExecuteOption
 }
 
 // Congo is a type that contains the program and dict of targets
@@ -59,7 +89,7 @@ func (c *Congo) Execute(funcName string) (*ExecuteResult, error) {
 		solutions[i] = solver.NewIndefinite(symbol.Type())
 	}
 
-	for i := uint(0); i < target.maxExec; i++ {
+	for i := uint(0); i < target.MaxExec; i++ {
 		values := make([]interface{}, n)
 		// Assign a zero value if the concrete value is nil.
 		for j, sol := range solutions {
@@ -99,12 +129,12 @@ func (c *Congo) Execute(funcName string) (*ExecuteResult, error) {
 		// Also exit when the execution count minus one is equal to maxExec to avoid unnecessary constraint solver call.
 		coverage = float64(len(covered)) / float64(len(target.f.Blocks))
 		log.Info.Printf("[%d] coverage: %.3f", i, coverage)
-		if coverage >= target.minCoverage {
+		if coverage >= target.MinCoverage {
 			log.Info.Printf("[%d] stop because the coverage criteria has been satisfied.", i)
 			break
 		}
 
-		if i == target.maxExec-1 {
+		if i == target.MaxExec-1 {
 			log.Info.Printf("[%d] stop because the runnign count has reached the limit", i)
 		}
 

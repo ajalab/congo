@@ -45,24 +45,14 @@ func isGoFilePath(path string) bool {
 type Config struct {
 	// FuncNames is a list of functions that we generate tests for.
 	FuncNames []string
-	// MaxExec is the maximum number of executions allowed.
-	MaxExec uint
-	// MinCoverage is the criteria that specifies the least coverage ratio to achieve.
-	MinCoverage float64
 	// Runner is the path to the Go file that calls the target function.
 	// Automatically generated if empty string is specified.
 	Runner string
+	ExecuteOption
 }
 
-func parseTargetAnnotation(funcDecl *ast.FuncDecl, cgroups []*ast.CommentGroup) (*Target, error) {
-	return nil, nil
-}
-
-func newTargetFromConfig(funcDecl *ast.FuncDecl, config *Config) *Target {
-	return &Target{
-		maxExec:     config.MaxExec,
-		minCoverage: config.MinCoverage,
-	}
+func parseAnnotation(funcDecl *ast.FuncDecl, cgroups []*ast.CommentGroup) (ExecuteOption, error) {
+	return ExecuteOption{}, nil
 }
 
 func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, config *Config) ([]*Target, error) {
@@ -106,14 +96,12 @@ func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, 
 					continue
 				}
 				if funcDecl, ok := obj.Decl.(*ast.FuncDecl); ok {
-					target, err := parseTargetAnnotation(funcDecl, cmaps[j][funcDecl])
+					eo, err := parseAnnotation(funcDecl, cmaps[j][funcDecl])
+					eo.Fill(&config.ExecuteOption, true).Fill(&defaultExecuteOption, false)
 					if err != nil {
 						return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 					}
-					if target == nil {
-						target = newTargetFromConfig(funcDecl, config)
-					}
-					targets[i] = target
+					targets[i] = &Target{ExecuteOption: eo}
 					break
 				}
 			}
@@ -124,13 +112,12 @@ func loadTargetFuncs(targetPackagePath string, targetPackage *packages.Package, 
 	for i, f := range fs {
 		for _, decl := range f.Decls {
 			if funcDecl, ok := decl.(*ast.FuncDecl); ok {
-				target, err := parseTargetAnnotation(funcDecl, cmaps[i][funcDecl])
+				eo, err := parseAnnotation(funcDecl, cmaps[i][funcDecl])
+				eo.Fill(&config.ExecuteOption, false).Fill(&defaultExecuteOption, false)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 				}
-				if target != nil {
-					targets = append(targets, target)
-				}
+				targets = append(targets, &Target{ExecuteOption: eo})
 			}
 		}
 	}
@@ -278,10 +265,9 @@ func load(config *Config, targetPackageIPath, runnerPackagePath string) (*Congo,
 
 	targets := make(map[string]*Target)
 	targets[funcName] = &Target{
-		f:           targetPackageSSA.Func(funcName),
-		symbols:     symbols,
-		maxExec:     config.MaxExec,
-		minCoverage: config.MinCoverage,
+		f:             targetPackageSSA.Func(funcName),
+		symbols:       symbols,
+		ExecuteOption: config.ExecuteOption,
 	}
 
 	return &Congo{
