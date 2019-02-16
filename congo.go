@@ -246,7 +246,7 @@ func (c *Congo) DumpSSA(dest io.Writer) error {
 	return err
 }
 
-// ExecuteResult is a type that contains the result of Program.Execute.
+// ExecuteResult is a type that contains the result of Execute.
 // TODO(ajalab):
 // ReturnValues has type []interp.value so it is meaningless to make this property public.
 // We use reflection to extract values from interp.value for now.
@@ -264,7 +264,7 @@ type ExecuteResult struct {
 	targetFuncName     string
 }
 
-// RunResult is a type that contains the result of Program.Run.
+// RunResult is a type that contains the result of Run.
 type RunResult struct {
 	symbolValues []interface{}
 	returnValues interface{}
