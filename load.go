@@ -21,7 +21,7 @@ func loadTargetPackage(targetPackagePath string) (*packages.Package, error) {
 	}
 
 	query := targetPackagePath
-	if targetPackagePath[len(targetPackagePath)-3:] == ".go" {
+	if isGoPath(query) {
 		// targetPackagePath is a file path to a Go file
 		query = "file=" + targetPackagePath
 	}
@@ -33,6 +33,10 @@ func loadTargetPackage(targetPackagePath string) (*packages.Package, error) {
 		return nil, errors.Errorf("no packages could be loaded for path %s", targetPackagePath)
 	}
 	return pkgs[0], nil
+}
+
+func isGoPath(path string) bool {
+	return path[len(path)-3:] == ".go"
 }
 
 // Config specifies the (optional) parameters for concolic execution.
