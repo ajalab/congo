@@ -50,16 +50,23 @@ type Config struct {
 }
 
 // Load loads the target program.
+// targetPackagePath is either
+// - a file path (e.g., foo/bar.go) to the target package
+// - an import path (e.g, github.com/ajalab/congo).
 func Load(config *Config, targetPackagePath string) (*Congo, error) {
 	if config == nil {
 		config = &Config{}
 	}
 
+	// (Pre)load the target package to
+	// - get a list of target functions from annotations
+	// - (optional) generate a test runner
 	targetPackage, err := loadTargetPackage(targetPackagePath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
 	}
 
+	// Generate a runner file if config.Runner is nil.
 	runnerPackageFPath := config.Runner
 	if runnerPackageFPath == "" {
 		runnerPackageFPath, err = generateRunner(targetPackage, config.FuncNames[0])
@@ -69,6 +76,7 @@ func Load(config *Config, targetPackagePath string) (*Congo, error) {
 		defer os.Remove(runnerPackageFPath)
 	}
 
+	// IPath represents an import path.
 	targetPackageIPath := targetPackage.PkgPath
 	return load(config, targetPackageIPath, runnerPackageFPath)
 }
