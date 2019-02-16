@@ -146,7 +146,7 @@ func Load(config *Config, targetPackagePath string) (*Congo, error) {
 	}
 
 	if _, err := loadTargetFuncs(targetPackagePath, targetPackage, config.FuncNames, &config.ExecuteOption); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
 	}
 
 	// Generate a runner file if config.Runner is nil.
