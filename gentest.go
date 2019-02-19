@@ -16,10 +16,8 @@ import (
 
 // GenerateTest generates test module for the program.
 func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
-	runnerFuncName := "main" // TODO(ajalab): parametrize this variable for arbitrary defined runner functions
-
 	// Rewrite symbols (symbol.Symbols and symbol.RetVals) in the runner function
-	runnerFunc := r.runnerFile.Scope.Lookup(runnerFuncName).Decl.(*ast.FuncDecl)
+	runnerFunc := r.runnerFile.Scope.Lookup(r.runnerFuncName).Decl.(*ast.FuncDecl)
 	symbolNames, retValNames, err := r.rewriteSymbols(runnerFunc)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate test code")
@@ -27,7 +25,7 @@ func (r *ExecuteResult) GenerateTest() (*ast.File, error) {
 
 	// Determine the name for the variable of type *testing.T
 	testingT := "testingT"
-	runnerFuncType := r.runnerPackage.Scope().Lookup(runnerFuncName).(*types.Func)
+	runnerFuncType := r.runnerPackage.Scope().Lookup(r.runnerFuncName).(*types.Func)
 	if runnerFuncType.Scope().Lookup("t") == nil {
 		testingT = "t"
 	}

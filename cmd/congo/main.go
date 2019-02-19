@@ -15,8 +15,8 @@ import (
 
 var (
 	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to file")
-	minCoverage = flag.Float64("coverage", 1.0, "minimum coverage")
-	maxExec     = flag.Uint("maxexec", 10, "maximum execution time")
+	minCoverage = flag.Float64("coverage", 0.0, "minimum coverage")
+	maxExec     = flag.Uint("maxexec", 0, "maximum execution time")
 	o           = flag.String("o", "", "destination path for generated test code")
 	ssa         = flag.Bool("ssa", false, "dump SSA")
 	funcName    = flag.String("f", "", "name of the target function")
@@ -36,7 +36,6 @@ func main() {
 		flag.Usage()
 		return
 	}
-
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
@@ -45,31 +44,25 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	packageName := flag.Arg(0)
-	targetPackage, err := congo.LoadTargetPackage(packageName)
-	if err != nil {
-		log.Error.Fatalf("failed to load package %s: %+v", packageName, err)
-	}
 
-	runnerPackagePath := *runner
-	if runnerPackagePath == "" {
-		runnerPackagePath, err = congo.GenerateRunner(targetPackage, *funcName)
-		if err != nil {
-			log.Error.Fatalf("failed to generate a runner: %v", err)
-		}
-		defer os.Remove(runnerPackagePath)
+	targetPackagePath := flag.Arg(0)
+	config := &congo.Config{
+		FuncNames: []string{*funcName},
+		ExecuteOption: congo.ExecuteOption{
+			MaxExec:     *maxExec,
+			MinCoverage: *minCoverage,
+		},
 	}
-
-	prog, err := congo.Load(targetPackage.PkgPath, runnerPackagePath, *funcName)
+	c, err := congo.Load(config, targetPackagePath)
 	if err != nil {
 		log.Error.Fatalf("failed to load: %+v", err)
 	}
 	if *ssa {
-		prog.DumpSSA(os.Stderr)
+		c.DumpSSA(os.Stderr)
 		return
 	}
 
-	result, err := prog.Execute(*maxExec, *minCoverage)
+	result, err := c.Execute(*funcName)
 	if err != nil {
 		log.Error.Fatalf("failed to perform concolic execution: %+v", err)
 	}

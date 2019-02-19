@@ -13,9 +13,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// GenerateRunner generates the runner package and returns its filepath.
-func GenerateRunner(targetPackage *packages.Package, funcName string) (string, error) {
-	runnerFile, err := generateRunnerAST(targetPackage, funcName)
+func generateRunner(targetPackage *packages.Package, targets []*Target) (string, error) {
+	runnerFile, err := generateRunnerAST(targetPackage, targets)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to generate runner AST file")
 	}
@@ -23,19 +22,108 @@ func GenerateRunner(targetPackage *packages.Package, funcName string) (string, e
 	if err != nil {
 		return "", err
 	}
-	runnerPackagePath := runnerTmpFile.Name()
+	runnerPackageFPath := runnerTmpFile.Name()
 
 	format.Node(runnerTmpFile, token.NewFileSet(), runnerFile)
 	if err := runnerTmpFile.Close(); err != nil {
 		return "", err
 	}
 
-	return runnerPackagePath, nil
+	return runnerPackageFPath, nil
 }
 
 // generateRunner generates the AST of a test runner.
 // The runner calls the target function declared in targetPackage.
-func generateRunnerAST(targetPackage *packages.Package, funcName string) (*ast.File, error) {
+func generateRunnerAST(targetPackage *packages.Package, targets []*Target) (*ast.File, error) {
+	scope := ast.NewScope(nil)
+	runnerFuncDecls := make([]*ast.FuncDecl, len(targets))
+	for i, target := range targets {
+		runnerFuncDecl, err := generateRunnerFuncAST(targetPackage, target.name)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to generate a runner function declaration AST for %s", target.name)
+		}
+		runnerFuncDecls[i] = runnerFuncDecl
+
+		runnerFuncName := runnerFuncDecl.Name.Name
+		// Ties the runner function to the scope.
+		runnerFuncDeclObj := ast.NewObj(ast.Fun, runnerFuncName)
+		runnerFuncDeclObj.Decl = runnerFuncDecl
+		scope.Insert(runnerFuncDeclObj)
+
+		// Update the runnerName field in target.
+		target.runnerName = runnerFuncName
+	}
+
+	// var __congoRunner func()
+	runnerVarDecl := &ast.GenDecl{
+		Tok: token.VAR,
+		Specs: []ast.Spec{
+			&ast.ValueSpec{
+				Names: []*ast.Ident{ast.NewIdent(runnerFuncNamePrefix)},
+				Type:  &ast.FuncType{},
+			},
+		},
+	}
+
+	// func main() {
+	//     __congoRunner()
+	// }
+	mainFuncDecl := &ast.FuncDecl{
+		Name: ast.NewIdent("main"),
+		Type: &ast.FuncType{},
+		Body: &ast.BlockStmt{
+			List: []ast.Stmt{
+				&ast.ExprStmt{
+					X: &ast.CallExpr{
+						Fun: ast.NewIdent(runnerFuncNamePrefix),
+					},
+				},
+			},
+		},
+	}
+	mainFuncDeclObj := ast.NewObj(ast.Fun, mainFuncDecl.Name.Name)
+	mainFuncDeclObj.Decl = mainFuncDecl
+	scope.Insert(mainFuncDeclObj)
+
+	// We do not use parenthesized import declaration
+	// since it needs the valid Lparen position.
+	decls := []ast.Decl{
+		generateImportDeclAST("", targetPackage.PkgPath),
+		generateImportDeclAST("", congoSymbolPackagePath),
+		// runtime package is required to run by interp
+		generateImportDeclAST("_", "runtime"),
+		runnerVarDecl,
+		mainFuncDecl,
+	}
+	for _, decl := range runnerFuncDecls {
+		decls = append(decls, decl)
+	}
+
+	return &ast.File{
+		Scope: scope,
+		Name:  ast.NewIdent("main"),
+		Decls: decls,
+	}, nil
+}
+
+// Get the signature of the function that belongs to pkg
+func getTargetFuncSig(pkg *packages.Package, funcName string) (*types.Signature, error) {
+	targetFunc := pkg.Types.Scope().Lookup(funcName)
+	if targetFunc == nil {
+		return nil, errors.Errorf("function %s does not exist in package %s", funcName, pkg)
+	}
+	targetFuncType := targetFunc.Type()
+	sig, ok := targetFuncType.(*types.Signature)
+	if !ok {
+		return nil, errors.Errorf("%s is not a function", funcName)
+	}
+
+	return sig, nil
+}
+
+const runnerFuncNamePrefix = "__congoRunner"
+
+func generateRunnerFuncAST(targetPackage *packages.Package, funcName string) (*ast.FuncDecl, error) {
 	// Get the signature of the target function
 	sig, err := getTargetFuncSig(targetPackage, funcName)
 	if err != nil {
@@ -140,49 +228,16 @@ func generateRunnerAST(targetPackage *packages.Package, funcName string) (*ast.F
 		runnerFuncBody = &ast.BlockStmt{List: []ast.Stmt{funcCallStmt, assertStmt}}
 	}
 
-	// func main() {
+	// func __congoRunnerXXX() {
 	//     (runnerFuncBody)
 	// }
 	runnerFuncDecl := &ast.FuncDecl{
-		Name: ast.NewIdent("main"),
+		Name: ast.NewIdent(runnerFuncNamePrefix + funcName),
 		Type: &ast.FuncType{},
 		Body: runnerFuncBody,
 	}
 
-	// Ties the runner function to the scope.
-	scope := ast.NewScope(nil)
-	runnerFuncDeclObj := ast.NewObj(ast.Fun, "main")
-	runnerFuncDeclObj.Decl = runnerFuncDecl
-	scope.Insert(runnerFuncDeclObj)
-
-	// We do not use parenthesized import declaration
-	// since it needs the valid Lparen position.
-	return &ast.File{
-		Scope: scope,
-		Name:  ast.NewIdent("main"),
-		Decls: []ast.Decl{
-			generateImportDeclAST("", targetPackage.PkgPath),
-			generateImportDeclAST("", congoSymbolPackagePath),
-			// runtime package is required to run by interp
-			generateImportDeclAST("_", "runtime"),
-			runnerFuncDecl,
-		},
-	}, nil
-}
-
-// Get the signature of the function that belongs to pkg
-func getTargetFuncSig(pkg *packages.Package, funcName string) (*types.Signature, error) {
-	targetFunc := pkg.Types.Scope().Lookup(funcName)
-	if targetFunc == nil {
-		return nil, errors.Errorf("function %s does not exist in package %s", funcName, pkg)
-	}
-	targetFuncType := targetFunc.Type()
-	sig, ok := targetFuncType.(*types.Signature)
-	if !ok {
-		return nil, errors.Errorf("%s is not a function", funcName)
-	}
-
-	return sig, nil
+	return runnerFuncDecl, nil
 }
 
 func generateSymbolASTs(sig *types.Signature) []ast.Expr {

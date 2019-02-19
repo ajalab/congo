@@ -2,13 +2,12 @@ package congo
 
 import (
 	"fmt"
-	"os"
 	"testing"
 )
 
 func TestRun(t *testing.T) {
 	testCases := []struct {
-		packageName string
+		packagePath string
 		funcName    string
 	}{
 		{"github.com/ajalab/congo/testdata", "BranchLessThan"},
@@ -18,30 +17,23 @@ func TestRun(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			targetPackage, err := LoadTargetPackage(tc.packageName)
-			if err != nil {
-				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
+		t.Run(fmt.Sprintf("%s.%s", tc.packagePath, tc.funcName), func(t *testing.T) {
+			config := &Config{
+				FuncNames: []string{tc.funcName},
 			}
-
-			runnerPackagePath, err := GenerateRunner(targetPackage, tc.funcName)
-			if err != nil {
-				t.Fatalf("failed to generate a runner: %v", err)
-			}
-			defer os.Remove(runnerPackagePath)
-
-			prog, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
+			c, err := Load(config, tc.packagePath)
 			if err != nil {
 				t.Fatalf("Config.Open: %v", err)
 			}
 
-			n := len(prog.symbols)
+			target := c.targets[tc.funcName]
+			n := len(target.symbols)
 			values := make([]interface{}, n)
-			for i, symbol := range prog.symbols {
+			for i, symbol := range target.symbols {
 				values[i] = zero(symbol.Type())
 			}
 
-			if _, err = prog.Run(values); err != nil {
+			if _, err = c.Run(tc.funcName, values); err != nil {
 				t.Errorf("prog.Run: %v", err)
 			}
 		})
@@ -49,7 +41,7 @@ func TestRun(t *testing.T) {
 }
 
 type executeTestCase struct {
-	packageName string
+	packagePath string
 	funcName    string
 	maxExec     uint
 	minCoverage float64
@@ -57,24 +49,20 @@ type executeTestCase struct {
 
 func testExecute(testCases []executeTestCase, t *testing.T) {
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("%s.%s", tc.packageName, tc.funcName), func(t *testing.T) {
-			targetPackage, err := LoadTargetPackage(tc.packageName)
-			if err != nil {
-				t.Fatalf("failed to load package %s: %+v", tc.packageName, err)
+		t.Run(fmt.Sprintf("%s.%s", tc.packagePath, tc.funcName), func(t *testing.T) {
+			config := &Config{
+				FuncNames: []string{tc.funcName},
+				ExecuteOption: ExecuteOption{
+					MaxExec:     tc.maxExec,
+					MinCoverage: tc.minCoverage,
+				},
 			}
-
-			runnerPackagePath, err := GenerateRunner(targetPackage, tc.funcName)
-			if err != nil {
-				t.Fatalf("failed to generate a runner: %v", err)
-			}
-			defer os.Remove(runnerPackagePath)
-
-			prog, err := Load(targetPackage.PkgPath, runnerPackagePath, tc.funcName)
+			prog, err := Load(config, tc.packagePath)
 			if err != nil {
 				t.Fatalf("Config.Open: %v\n", err)
 			}
 
-			res, err := prog.Execute(tc.maxExec, tc.minCoverage)
+			res, err := prog.Execute(tc.funcName)
 			if err != nil {
 				t.Fatalf("Program.Execute: %v\n", err)
 			}
