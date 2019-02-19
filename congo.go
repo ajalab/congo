@@ -59,9 +59,10 @@ func (eo *ExecuteOption) Fill(src *ExecuteOption, overwrite bool) *ExecuteOption
 
 // Target is a type that contains the single target of concolic testing (function and set of symbols).
 type Target struct {
-	name    string
-	f       *ssa.Function
-	symbols []ssa.Value
+	name       string
+	f          *ssa.Function
+	runnerName string
+	symbols    []ssa.Value
 
 	ExecuteOption
 }
@@ -190,6 +191,7 @@ func (c *Congo) Execute(funcName string) (*ExecuteResult, error) {
 		runnerFile:         c.program.runnerFile,
 		runnerTypesInfo:    c.program.runnerTypesInfo,
 		runnerPackage:      c.program.runnerPackage.Pkg,
+		runnerFuncName:     target.runnerName,
 		targetPackage:      c.program.targetPackage.Pkg,
 		congoSymbolPackage: c.program.congoSymbolPackage.Pkg,
 		targetFuncSig:      target.f.Signature,
@@ -217,6 +219,7 @@ func (c *Congo) Run(funcName string, values []interface{}) (*interp.CongoInterpR
 	return interp.Interpret(
 		c.program.runnerPackage,
 		target.f,
+		target.runnerName,
 		symbolValues,
 		mode,
 		&types.StdSizes{WordSize: 8, MaxAlign: 8},
@@ -259,6 +262,7 @@ type ExecuteResult struct {
 	runnerFile         *ast.File
 	runnerTypesInfo    *types.Info
 	runnerPackage      *types.Package
+	runnerFuncName     string
 	targetPackage      *types.Package
 	congoSymbolPackage *types.Package
 	targetFuncSig      *types.Signature

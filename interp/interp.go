@@ -681,7 +681,7 @@ func deleteBodies(pkg *ssa.Package, except ...string) {
 //
 // The SSA program must include the "runtime" package.
 //
-func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (result *CongoInterpResult, err error) {
+func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, runnerName string, symbolicValues []SymbolicValue, mode Mode, sizes types.Sizes, filename string, args []string) (result *CongoInterpResult, err error) {
 	if syswrite == nil {
 		panic("Interpret: unsupported platform.")
 	}
@@ -787,7 +787,7 @@ func Interpret(mainpkg *ssa.Package, targetfunc *ssa.Function, symbolicValues []
 
 	// Run!
 	call(i, nil, token.NoPos, mainpkg.Func("init"), nil)
-	if mainFn := mainpkg.Func("main"); mainFn != nil {
+	if mainFn := mainpkg.Func(runnerName); mainFn != nil {
 		call(i, nil, token.NoPos, mainFn, nil)
 		exitCode = 0
 	} else {

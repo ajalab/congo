@@ -150,27 +150,29 @@ func Load(config *Config, targetPackagePath string) (*Congo, error) {
 		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
 	}
 
-	if _, err := loadTargetFuncs(targetPackagePath, targetPackage, config.FuncNames, &config.ExecuteOption); err != nil {
+	targets, err := loadTargetFuncs(targetPackagePath, targetPackage, config.FuncNames, &config.ExecuteOption)
+	if err != nil {
 		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
 	}
 
 	// Generate a runner file if config.Runner is nil.
 	runnerPackageFPath := config.Runner
 	if runnerPackageFPath == "" {
-		runnerPackageFPath, err = generateRunner(targetPackage, config.FuncNames[0])
+		runnerPackageFPath, err = generateRunner(targetPackage, targets)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to generate a runner")
 		}
 		defer os.Remove(runnerPackageFPath)
+	} else {
+		return nil, errors.New("user-specified runner is not supported yet")
 	}
 
 	// IPath represents an import path.
 	targetPackageIPath := targetPackage.PkgPath
-	return load(config, targetPackageIPath, runnerPackageFPath)
+	return load(targets, targetPackageIPath, runnerPackageFPath)
 }
 
-func load(config *Config, targetPackageIPath, runnerPackagePath string) (*Congo, error) {
-	funcName := config.FuncNames[0]
+func load(targets []*Target, targetPackageIPath, runnerPackagePath string) (*Congo, error) {
 	pConfig := &packages.Config{
 		Mode: packages.LoadAllSyntax,
 	}
@@ -214,54 +216,62 @@ func load(config *Config, targetPackageIPath, runnerPackagePath string) (*Congo,
 	runnerPackageSSA := ssaPkgs[runnerPackageIdx]
 	targetPackageSSA := ssaProg.Package(targetPackage.Types)
 	congoSymbolPackageSSA := ssaProg.Package(congoSymbolPackage.Types)
-
-	// Find references to congo.Symbol
 	symbolType := congoSymbolPackageSSA.Members["SymbolType"].Type()
-	mainFunc := runnerPackageSSA.Func("main")
-	symbolSubstTable := make(map[uint64]struct {
-		i int
-		v ssa.Value
-	})
-	for _, block := range mainFunc.Blocks {
-		for _, instr := range block.Instrs {
-			// Check if instr is pointer indirection ( exp.(type) form )
-			assertInstr, ok := instr.(*ssa.TypeAssert)
-			if !ok || assertInstr.X.Type() != symbolType {
-				continue
-			}
-			ty := assertInstr.AssertedType
-			unopInstr, ok := assertInstr.X.(*ssa.UnOp)
-			if !ok || unopInstr.Op != token.MUL {
-				return nil, errors.Errorf("Illegal use of Symbol")
-			}
-			indexAddrInstr, ok := unopInstr.X.(*ssa.IndexAddr)
-			if !ok {
-				return nil, errors.Errorf("Symbol must be used with the index operator")
-			}
-			index, ok := indexAddrInstr.Index.(*ssa.Const)
-			if !ok {
-				return nil, errors.Errorf("Symbol must be indexed with a constant value")
-			}
 
-			i := index.Uint64()
-			if subst, ok := symbolSubstTable[i]; ok {
-				if subst.v.Type() != ty {
-					return nil, errors.Errorf("Symbol[%d] is used as multiple types", i)
+	targetsDic := make(map[string]*Target)
+
+	for _, target := range targets {
+		// Find references to congo.Symbol
+		mainFunc := runnerPackageSSA.Func(target.runnerName)
+		symbolSubstTable := make(map[uint64]struct {
+			i int
+			v ssa.Value
+		})
+		for _, block := range mainFunc.Blocks {
+			for _, instr := range block.Instrs {
+				// expression symbol.Symbols[i].(XXX) is considered as a symbol.
+				assertInstr, ok := instr.(*ssa.TypeAssert)
+				if !ok || assertInstr.X.Type() != symbolType {
+					continue
 				}
-				indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(subst.i)), index.Type())
-			} else {
-				newi := len(symbolSubstTable)
-				indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(newi)), index.Type())
-				symbolSubstTable[i] = struct {
-					i int
-					v ssa.Value
-				}{newi, assertInstr}
+				ty := assertInstr.AssertedType
+				unopInstr, ok := assertInstr.X.(*ssa.UnOp)
+				if !ok || unopInstr.Op != token.MUL {
+					return nil, errors.Errorf("Illegal use of Symbol")
+				}
+				indexAddrInstr, ok := unopInstr.X.(*ssa.IndexAddr)
+				if !ok {
+					return nil, errors.Errorf("Symbol must be used with the index operator")
+				}
+				index, ok := indexAddrInstr.Index.(*ssa.Const)
+				if !ok {
+					return nil, errors.Errorf("Symbol must be indexed with a constant value")
+				}
+
+				i := index.Uint64()
+				if subst, ok := symbolSubstTable[i]; ok {
+					if subst.v.Type() != ty {
+						return nil, errors.Errorf("Symbol[%d] is used as multiple types", i)
+					}
+					indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(subst.i)), index.Type())
+				} else {
+					newi := len(symbolSubstTable)
+					indexAddrInstr.Index = ssa.NewConst(constant.MakeUint64(uint64(newi)), index.Type())
+					symbolSubstTable[i] = struct {
+						i int
+						v ssa.Value
+					}{newi, assertInstr}
+				}
 			}
 		}
-	}
-	symbols := make([]ssa.Value, len(symbolSubstTable))
-	for _, subst := range symbolSubstTable {
-		symbols[subst.i] = subst.v
+		symbols := make([]ssa.Value, len(symbolSubstTable))
+		for _, subst := range symbolSubstTable {
+			symbols[subst.i] = subst.v
+		}
+
+		target.f = targetPackageSSA.Func(target.name)
+		target.symbols = symbols
+		targetsDic[target.name] = target
 	}
 
 	program := &Program{
@@ -272,15 +282,8 @@ func load(config *Config, targetPackageIPath, runnerPackagePath string) (*Congo,
 		congoSymbolPackage: congoSymbolPackageSSA,
 	}
 
-	targets := make(map[string]*Target)
-	targets[funcName] = &Target{
-		f:             targetPackageSSA.Func(funcName),
-		symbols:       symbols,
-		ExecuteOption: config.ExecuteOption,
-	}
-
 	return &Congo{
 		program: program,
-		targets: targets,
+		targets: targetsDic,
 	}, nil
 }
