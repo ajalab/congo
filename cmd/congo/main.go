@@ -19,6 +19,7 @@ var (
 	maxExec     = flag.Uint("maxexec", 0, "maximum execution time")
 	o           = flag.String("o", "", "destination path for generated test code")
 	ssa         = flag.Bool("ssa", false, "dump SSA")
+	ast         = flag.Bool("ast", false, "dump AST")
 	funcName    = flag.String("f", "", "name of the target function")
 	runner      = flag.String("r", "", "test template")
 )
@@ -59,6 +60,10 @@ func main() {
 	}
 	if *ssa {
 		c.DumpSSA(os.Stderr)
+		return
+	}
+	if *ast {
+		c.DumpRunnerAST(os.Stderr)
 		return
 	}
 
