@@ -249,7 +249,7 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 				x:       instr.X,
 			})
 		default:
-			log.Error.Fatalf("panic caused by %[1]v: %[1]T but not supported", instr)
+			log.Error.Fatalf("panic caused by %v@%s: %[1]T but not supported", instr, instr.Parent())
 			panic("unreachable")
 		}
 	}
