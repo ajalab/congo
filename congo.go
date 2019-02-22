@@ -39,6 +39,10 @@ var defaultExecuteOption = ExecuteOption{
 
 // Fill fills the fields in ExecuteOption with those in src.
 func (eo *ExecuteOption) Fill(src *ExecuteOption, overwrite bool) *ExecuteOption {
+	if eo == nil || src == nil {
+		return eo
+	}
+
 	if overwrite {
 		if src.MaxExec != 0 {
 			eo.MaxExec = src.MaxExec
