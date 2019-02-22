@@ -139,7 +139,7 @@ func loadTargetFuncs(
 		fs = targetPackage.Syntax
 	}
 	if len(fs) == 0 {
-		return nil, errors.New("annotations could not be loaded")
+		return nil, errors.Errorf("no files could be loaded for package %s", targetPackagePath)
 	}
 
 	cmaps := make([]ast.CommentMap, len(fs))
