@@ -6,6 +6,9 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 
@@ -51,8 +54,61 @@ type Config struct {
 	ExecuteOption
 }
 
-func parseAnnotation(funcDecl *ast.FuncDecl, cgroups []*ast.CommentGroup) (ExecuteOption, error) {
-	return ExecuteOption{}, nil
+func parseAnnotation(text string, eo *ExecuteOption) (bool, error) {
+	const annoPrefix = "congo:"
+	const annoTagKey = "key"
+
+	if text[:2] != "//" {
+		return false, nil
+	}
+	text = strings.TrimSpace(text[2:])
+
+	eoTy := reflect.TypeOf(*eo)
+	for i := 0; i < eoTy.NumField(); i++ {
+		f := eoTy.Field(i)
+		key := f.Tag.Get(annoTagKey)
+		fullKey := annoPrefix + key
+		if text[:len(fullKey)] == fullKey {
+			value := strings.TrimSpace(text[len(fullKey):])
+			switch f.Type.Kind() {
+			case reflect.Uint:
+				iv, err := strconv.Atoi(value)
+				if err != nil {
+					return false, err
+				}
+				reflect.ValueOf(eo).Elem().Field(i).SetUint(uint64(iv))
+			case reflect.Float64:
+				fv, err := strconv.ParseFloat(value, 64)
+				if err != nil {
+					return false, err
+				}
+				reflect.ValueOf(eo).Elem().Field(i).SetFloat(fv)
+			default:
+				return false, errors.Errorf("unsupported option tyupe: %s", f.Type)
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func getExecuteOption(funcDecl *ast.FuncDecl, cgroups []*ast.CommentGroup) (*ExecuteOption, error) {
+	eo := &ExecuteOption{}
+	isTarget := false
+	for _, cgroup := range cgroups {
+		for _, comment := range cgroup.List {
+			text := comment.Text
+			parsed, err := parseAnnotation(text, eo)
+			if err != nil {
+				return eo, errors.Wrapf(err, `failed to parse annotation "%s" for %s`, text, funcDecl.Name.Name)
+			}
+			isTarget = isTarget || parsed
+		}
+	}
+	if isTarget {
+		return eo, nil
+	}
+	return nil, nil
 }
 
 func loadTargetFuncs(
@@ -60,7 +116,7 @@ func loadTargetFuncs(
 	targetPackage *packages.Package,
 	funcNames []string,
 	argEO *ExecuteOption,
-) ([]*Target, error) {
+) (map[string]*Target, error) {
 	// cases:
 	// 1. targetPackagePath is a file path to a Go file and len(funcNames) is 0.
 	// 2. targetPackagePath is a file path to a Go file and len(funcNames) is greater than 0 .
@@ -91,23 +147,27 @@ func loadTargetFuncs(
 		cmaps[i] = ast.NewCommentMap(targetPackage.Fset, f, f.Comments)
 	}
 
+	targets := make(map[string]*Target)
 	if len(funcNames) > 0 {
-		targets := make([]*Target, len(funcNames))
+		// case 2 or 4
 	FUNC:
-		for i, name := range funcNames {
+		for _, name := range funcNames {
 			for j, f := range fs {
 				obj := f.Scope.Lookup(name)
 				if obj == nil {
 					continue
 				}
 				if funcDecl, ok := obj.Decl.(*ast.FuncDecl); ok {
-					eo, err := parseAnnotation(funcDecl, cmaps[j][funcDecl])
-					eo.Fill(argEO, true).Fill(&defaultExecuteOption, false)
+					eo, err := getExecuteOption(funcDecl, cmaps[j][funcDecl])
 					if err != nil {
 						return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 					}
+					if eo == nil {
+						eo = &ExecuteOption{}
+					}
+					eo.Fill(argEO, true).Fill(defaultExecuteOption, false)
 					target := &Target{name: name, ExecuteOption: eo}
-					targets[i] = target
+					targets[name] = target
 					continue FUNC
 				}
 			}
@@ -115,18 +175,21 @@ func loadTargetFuncs(
 		}
 		return targets, nil
 	}
-	var targets []*Target
+	// case 1 or 3
 	for i, f := range fs {
 		for _, decl := range f.Decls {
 			if funcDecl, ok := decl.(*ast.FuncDecl); ok {
 				name := funcDecl.Name.String()
-				eo, err := parseAnnotation(funcDecl, cmaps[i][funcDecl])
-				eo.Fill(argEO, false).Fill(&defaultExecuteOption, false)
+				eo, err := getExecuteOption(funcDecl, cmaps[i][funcDecl])
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to parse annotations for function %s", funcDecl.Name)
 				}
+				if eo == nil {
+					continue
+				}
+				eo.Fill(argEO, true).Fill(defaultExecuteOption, false)
 				target := &Target{name: name, ExecuteOption: eo}
-				targets = append(targets, target)
+				targets[name] = target
 			}
 		}
 	}
@@ -172,7 +235,7 @@ func Load(config *Config, targetPackagePath string) (*Congo, error) {
 	return load(targets, targetPackageIPath, runnerPackageFPath)
 }
 
-func load(targets []*Target, targetPackageIPath, runnerPackagePath string) (*Congo, error) {
+func load(targets map[string]*Target, targetPackageIPath, runnerPackagePath string) (*Congo, error) {
 	pConfig := &packages.Config{
 		Mode: packages.LoadAllSyntax,
 	}
@@ -217,8 +280,6 @@ func load(targets []*Target, targetPackageIPath, runnerPackagePath string) (*Con
 	targetPackageSSA := ssaProg.Package(targetPackage.Types)
 	congoSymbolPackageSSA := ssaProg.Package(congoSymbolPackage.Types)
 	symbolType := congoSymbolPackageSSA.Members["SymbolType"].Type()
-
-	targetsDic := make(map[string]*Target)
 
 	for _, target := range targets {
 		// Find references to congo.Symbol
@@ -271,7 +332,6 @@ func load(targets []*Target, targetPackageIPath, runnerPackagePath string) (*Con
 
 		target.f = targetPackageSSA.Func(target.name)
 		target.symbols = symbols
-		targetsDic[target.name] = target
 	}
 
 	program := &Program{
@@ -284,6 +344,6 @@ func load(targets []*Target, targetPackageIPath, runnerPackagePath string) (*Con
 
 	return &Congo{
 		program: program,
-		targets: targetsDic,
+		targets: targets,
 	}, nil
 }

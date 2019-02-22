@@ -2,6 +2,7 @@
 package load
 
 // AnnotatedBar ...
+// congo:maxexec 50
 func AnnotatedBar() {
 
 }

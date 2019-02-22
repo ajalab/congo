@@ -2,6 +2,8 @@
 package load
 
 // AnnotatedFoo ...
+// congo:cover 0.75
+// congo:maxexec 10
 func AnnotatedFoo() {
 
 }

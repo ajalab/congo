@@ -13,7 +13,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func generateRunner(targetPackage *packages.Package, targets []*Target) (string, error) {
+func generateRunner(targetPackage *packages.Package, targets map[string]*Target) (string, error) {
 	runnerFile, err := generateRunnerAST(targetPackage, targets)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to generate runner AST file")
@@ -34,10 +34,11 @@ func generateRunner(targetPackage *packages.Package, targets []*Target) (string,
 
 // generateRunner generates the AST of a test runner.
 // The runner calls the target function declared in targetPackage.
-func generateRunnerAST(targetPackage *packages.Package, targets []*Target) (*ast.File, error) {
+func generateRunnerAST(targetPackage *packages.Package, targets map[string]*Target) (*ast.File, error) {
 	scope := ast.NewScope(nil)
 	runnerFuncDecls := make([]*ast.FuncDecl, len(targets))
-	for i, target := range targets {
+	i := 0
+	for _, target := range targets {
 		runnerFuncDecl, err := generateRunnerFuncAST(targetPackage, target.name)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to generate a runner function declaration AST for %s", target.name)
@@ -52,6 +53,7 @@ func generateRunnerAST(targetPackage *packages.Package, targets []*Target) (*ast
 
 		// Update the runnerName field in target.
 		target.runnerName = runnerFuncName
+		i++
 	}
 
 	// var __congoRunner func()

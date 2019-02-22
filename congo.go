@@ -28,11 +28,11 @@ type Program struct {
 
 // ExecuteOption is a type that contains options to perform concolic execution on a target function.
 type ExecuteOption struct {
-	MaxExec     uint
-	MinCoverage float64
+	MaxExec     uint    `key:"maxexec"`
+	MinCoverage float64 `key:"cover"`
 }
 
-var defaultExecuteOption = ExecuteOption{
+var defaultExecuteOption = &ExecuteOption{
 	MaxExec:     10,
 	MinCoverage: 1.0,
 }
@@ -68,7 +68,7 @@ type Target struct {
 	runnerName string
 	symbols    []ssa.Value
 
-	ExecuteOption
+	*ExecuteOption
 }
 
 // Congo is a type that contains the program and dict of targets
