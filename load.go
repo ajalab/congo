@@ -41,7 +41,7 @@ func loadTargetPackage(targetPackagePath string) (*packages.Package, error) {
 }
 
 func isGoFilePath(path string) bool {
-	return path[len(path)-3:] == ".go"
+	return strings.HasSuffix(path, ".go")
 }
 
 // Config specifies the (optional) parameters for concolic execution.
