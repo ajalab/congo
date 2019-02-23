@@ -145,3 +145,33 @@ func TestLoadTargetFuncs(t *testing.T) {
 		})
 	}
 }
+
+func TestParseAnnotationDirective(t *testing.T) {
+	tcs := []struct {
+		s      string
+		key    string
+		value  string
+		parsed bool
+	}{
+		{"congo:skip", "skip", "", true},
+		{"congo :skip", "skip", "", false},
+		{"congo: skip", "skip", "", false},
+		{"congo:skipkip", "skip", "", false},
+		{"congo:hoge x", "hoge", "x", true},
+		{"congo:hoge x y", "hoge", "x y", true},
+		{"congo:hoge     x", "hoge", "x", true},
+		{"congo:hogehoge x", "hoge", "", false},
+	}
+
+	for _, tc := range tcs {
+		t.Run(fmt.Sprintf("parse \"%s\" from \"%s\"", tc.key, tc.s), func(t *testing.T) {
+			value, parsed := parseAnnotationDirective(tc.s, tc.key)
+			if parsed != tc.parsed {
+				t.Errorf("assertion failed on parsed: expected %t, actual %t", tc.parsed, parsed)
+			}
+			if value != tc.value {
+				t.Errorf("assertion failed on value: expected \"%s\", actual \"%s\"", tc.value, value)
+			}
+		})
+	}
+}

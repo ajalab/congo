@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 
@@ -54,8 +55,34 @@ type Config struct {
 	ExecuteOption
 }
 
+// parseAnnotationDirective parses directives from s, which is in the form of "congo:<key>[ <value>]".
+// This function requires that the leading and trailing white space
+// in s is trimmed beforehand.
+func parseAnnotationDirective(s, key string) (string, bool) {
+	prefix := "congo:"
+	if !strings.HasPrefix(s, prefix) {
+		return "", false
+	}
+	prefixTrimmed := strings.TrimPrefix(s, prefix)
+
+	var read []rune
+	for _, r := range prefixTrimmed {
+		if unicode.IsSpace(r) {
+			break
+		}
+		read = append(read, r)
+	}
+
+	readKey := string(read)
+	if readKey != key {
+		return "", false
+	}
+	value := strings.TrimSpace(strings.TrimPrefix(prefixTrimmed, readKey))
+
+	return value, true
+}
+
 func parseAnnotation(text string, eo *ExecuteOption) (bool, error) {
-	const annoPrefix = "congo:"
 	const annoTagKey = "key"
 
 	if text[:2] != "//" {
@@ -67,9 +94,7 @@ func parseAnnotation(text string, eo *ExecuteOption) (bool, error) {
 	for i := 0; i < eoTy.NumField(); i++ {
 		f := eoTy.Field(i)
 		key := f.Tag.Get(annoTagKey)
-		fullKey := annoPrefix + key
-		if text[:len(fullKey)] == fullKey {
-			value := strings.TrimSpace(text[len(fullKey):])
+		if value, ok := parseAnnotationDirective(text, key); ok {
 			switch f.Type.Kind() {
 			case reflect.Uint:
 				iv, err := strconv.Atoi(value)
