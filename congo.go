@@ -254,6 +254,22 @@ func (c *Congo) DumpSSA(dest io.Writer) error {
 	return err
 }
 
+// Funcs returns the list of function names that Congo loaded as execution target.
+func (c *Congo) Funcs() []string {
+	names := make([]string, len(c.targets))
+	i := 0
+	for name := range c.targets {
+		names[i] = name
+		i++
+	}
+	return names
+}
+
+// Target returns the target which has the given name.
+func (c *Congo) Target(name string) *Target {
+	return c.targets[name]
+}
+
 // ExecuteResult is a type that contains the result of Execute.
 // TODO(ajalab):
 // ReturnValues has type []interp.value so it is meaningless to make this property public.
