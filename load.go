@@ -240,7 +240,10 @@ func Load(config *Config, targetPackagePath string) (*Congo, error) {
 
 	targets, err := loadTargetFuncs(targetPackagePath, targetPackage, config.FuncNames, &config.ExecuteOption)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to load package %s", targetPackagePath)
+		return nil, errors.Wrapf(err, "failed to load target functions in %s", targetPackage.PkgPath)
+	}
+	if len(targets) == 0 {
+		return nil, errors.Errorf("no target functions could be found in %s", targetPackage.PkgPath)
 	}
 
 	// Generate a runner file if config.Runner is nil.
