@@ -3,6 +3,8 @@ package testdata
 import "fmt"
 
 // BranchLessThan is a test case for checking < operator.
+// congo:maxexec 2
+// congo:cover 1.0
 func BranchLessThan(x int32) {
 	if x < 5 {
 		fmt.Println("x is smaller than 5")
@@ -12,6 +14,8 @@ func BranchLessThan(x int32) {
 }
 
 // BranchAnd is a test case for checking && condition.
+// congo:maxexec 2
+// congo:cover 1.0
 func BranchAnd(x int32) {
 	if 0 < x && x < 5 {
 		fmt.Println("x is in 0 ~ 5")
@@ -21,6 +25,8 @@ func BranchAnd(x int32) {
 }
 
 // BranchMultiple is a test case for checking consecutive if statements.
+// congo:maxexec 4
+// congo:cover 1.0
 func BranchMultiple(x int32) {
 	if x < 5 {
 		fmt.Println("x is small")
@@ -32,6 +38,8 @@ func BranchMultiple(x int32) {
 }
 
 // BranchPhi is a test case for checking φ-function.
+// congo:maxexec 2
+// congo:cover 1.0
 func BranchPhi(x int) {
 	y := 0
 
@@ -49,6 +57,8 @@ func BranchPhi(x int) {
 }
 
 // BranchPhi2 is a test case for checking φ-function.
+// congo:maxexec 3
+// congo:cover 1.0
 func BranchPhi2(x int) {
 	var y int
 
@@ -66,6 +76,8 @@ func BranchPhi2(x int) {
 }
 
 // BranchThreeVars is a test case for checking multiple arguments.
+// congo:maxexec 2
+// congo:cover 1.0
 func BranchThreeVars(x int32, y int32, z int32) {
 	if x+y+z > 50 {
 		fmt.Println("x + y + z is greater than 50")
@@ -75,6 +87,8 @@ func BranchThreeVars(x int32, y int32, z int32) {
 }
 
 // BranchTenVars is a test case for checking multiple arguments.
+// congo:maxexec 2
+// congo:cover 1.0
 func BranchTenVars(a int32, b int32, c int32, d int32, e int32, f int32, g int32, h int32, i int32, j int32) {
 	if a+b+c+d+e+f+g+h+i+j > 50 {
 		fmt.Println("a+b+c+d+e+f+g+h+i+j is greater than 50")
@@ -84,6 +98,8 @@ func BranchTenVars(a int32, b int32, c int32, d int32, e int32, f int32, g int32
 }
 
 // BranchSwitch is a test case for checking a switch statement.
+// congo:maxexec 4
+// congo:cover 1.0
 func BranchSwitch(x int) {
 	switch x {
 	case 0:

@@ -1,5 +1,8 @@
 package testdata
 
+// Sort2 returns values of a and b in ascending order.
+// congo:maxexec 2
+// congo:cover 1.0
 func Sort2(a, b int) (x, y int) {
 	if a < b {
 		x, y = a, b
@@ -9,6 +12,9 @@ func Sort2(a, b int) (x, y int) {
 	return
 }
 
+// USort2 returns values of unsigned integers a and b in ascending order.
+// congo:maxexec 2
+// congo:cover 1.0
 func USort2(a, b uint) (x, y uint) {
 	if a < b {
 		x, y = a, b
@@ -18,6 +24,9 @@ func USort2(a, b uint) (x, y uint) {
 	return
 }
 
+// Sort3 returns values of a, b and c in ascending order.
+// congo:maxexec 6
+// congo:cover 1.0
 func Sort3(a, b, c int) (x, y, z int) {
 	if a < b {
 		if c < a {
@@ -43,6 +52,9 @@ func Sort3(a, b, c int) (x, y, z int) {
 	return
 }
 
+// USort3 returns values of unsigned integers a, b and c in ascending order.
+// congo:maxexec 6
+// congo:cover 1.0
 func USort3(a, b, c uint) (x, y, z uint) {
 	if a < b {
 		if c < a {
