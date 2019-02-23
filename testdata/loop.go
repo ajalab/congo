@@ -2,6 +2,9 @@ package testdata
 
 import "fmt"
 
+// LoopInt is a test case for checking loop.
+// congo:maxexec 12
+// congo:cover 1.0
 func LoopInt(x int) {
 	sum := 0
 
