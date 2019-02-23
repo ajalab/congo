@@ -32,11 +32,6 @@ func main() {
 		flag.Usage()
 		return
 	}
-	if *funcName == "" {
-		fmt.Fprintln(os.Stderr, "function name must be specified with -f option")
-		flag.Usage()
-		return
-	}
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {
@@ -47,8 +42,12 @@ func main() {
 	}
 
 	targetPackagePath := flag.Arg(0)
+	var funcNames []string
+	if *funcName != "" {
+		funcNames = []string{*funcName}
+	}
 	config := &congo.Config{
-		FuncNames: []string{*funcName},
+		FuncNames: funcNames,
 		ExecuteOption: congo.ExecuteOption{
 			MaxExec:     *maxExec,
 			MinCoverage: *minCoverage,
@@ -67,15 +66,6 @@ func main() {
 		return
 	}
 
-	result, err := c.Execute(*funcName)
-	if err != nil {
-		log.Error.Fatalf("failed to perform concolic execution: %+v", err)
-	}
-	f, err := result.GenerateTest()
-	if err != nil {
-		log.Error.Fatalf("failed to generate test: %+v", err)
-	}
-
 	dest := os.Stdout
 	if *o != "" {
 		log.Info.Print("save to", *o)
@@ -84,5 +74,15 @@ func main() {
 			log.Error.Fatalf("faled to open the destination file: %v", err)
 		}
 	}
-	format.Node(dest, token.NewFileSet(), f)
+	for _, name := range c.Funcs() {
+		result, err := c.Execute(name)
+		if err != nil {
+			log.Error.Fatalf("failed to perform concolic execution: %+v", err)
+		}
+		f, err := result.GenerateTest()
+		if err != nil {
+			log.Error.Fatalf("failed to generate test: %+v", err)
+		}
+		format.Node(dest, token.NewFileSet(), f)
+	}
 }
