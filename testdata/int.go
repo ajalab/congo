@@ -45,3 +45,23 @@ func SubOverflow(n uint8) {
 		fmt.Println("n - 50 != 244")
 	}
 }
+
+// Mod1 is a test case to check mod.
+// congo:maxexec 3
+// congo:cover 1.0
+func Mod1(n int) bool {
+	if n > 2 && n%4 == 2 {
+		return true
+	}
+	return false
+}
+
+// Mod2 is a test case to check mod.
+// congo:maxexec 3
+// congo:cover 1.0
+func Mod2(n int) bool {
+	if n < 0 && n%4 == -2 {
+		return true
+	}
+	return false
+}

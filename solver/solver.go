@@ -335,6 +335,25 @@ func z3MakeDiv(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 }
 
+func z3MakeMod(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
+	basicTy, ok := ty.(*types.Basic)
+	if !ok {
+		log.Error.Fatalf("z3MakeMod: invalid type: %T\n", ty)
+		panic("unreachable")
+	}
+	info := basicTy.Info()
+	switch {
+	case info&types.IsInteger > 0:
+		if info&types.IsUnsigned > 0 {
+			return C.Z3_mk_bvurem(ctx, x, y)
+		}
+		return C.Z3_mk_bvsrem(ctx, x, y)
+	default:
+		log.Error.Fatalf("z3MakeDiv: not implemented info: %v", basicTy.Kind())
+		panic("unimplemented")
+	}
+}
+
 func z3MakeLt(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	basicTy, ok := ty.(*types.Basic)
 	if !ok {
@@ -482,6 +501,8 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 		return z3MakeMul(s.ctx, x, y, ty), nil
 	case token.QUO:
 		return z3MakeDiv(s.ctx, x, y, ty), nil
+	case token.REM:
+		return z3MakeMod(s.ctx, x, y, ty), nil
 	case token.EQL:
 		return C.Z3_mk_eq(s.ctx, x, y), nil
 	case token.LSS:
