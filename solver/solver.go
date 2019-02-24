@@ -513,6 +513,13 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 		return z3MakeGt(s.ctx, x, y, ty), nil
 	case token.GEQ:
 		return z3MakeGe(s.ctx, x, y, ty), nil
+	case token.AND:
+		return C.Z3_mk_bvand(s.ctx, x, y), nil
+	case token.OR:
+		return C.Z3_mk_bvor(s.ctx, x, y), nil
+	case token.XOR:
+		return C.Z3_mk_bvxor(s.ctx, x, y), nil
+	// case token.AND_NOT
 	case token.LAND:
 		return C.Z3_mk_and(s.ctx, 2, &args[0]), nil
 	case token.LOR:
