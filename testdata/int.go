@@ -65,3 +65,25 @@ func Mod2(n int) bool {
 	}
 	return false
 }
+
+// AndOr1 is a test case to check AND and OR.
+// congo:maxexec 5
+// congo:cover 1.0
+func AndOr1(a, b, c int64) bool {
+	if a > 0 && b > 0 && c > 0 {
+		if a|b|c == 0xfff && a&b == 0 && b&c == 0 && c&a == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// Xor1 is a test case to check XOR.
+// congo:maxexec 5
+// congo:cover 1.0
+func Xor1(a, b, c int64) bool {
+	if a > 0 && b > 0 && c > 0 && a^b^c == 0xffff {
+		return true
+	}
+	return false
+}
