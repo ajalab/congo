@@ -573,6 +573,7 @@ func (s *Z3Solver) getConstAST(v *ssa.Const) C.Z3_ast {
 	panic("unimplemented")
 }
 
+// Branches returns the slice of branches.
 func (s *Z3Solver) Branches() []Branch {
 	return s.branches
 }
