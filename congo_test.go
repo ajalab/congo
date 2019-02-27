@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const testPackage = "github.com/ajalab/congo/testdata"
+const testPackage = "./testdata"
 
 func TestExecute(t *testing.T) {
 	config := &Config{}
