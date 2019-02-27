@@ -3,6 +3,7 @@ package log
 import (
 	"log"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -110,4 +111,18 @@ func SetLevel(level Level) {
 	mu.Lock()
 	currentLogger.level = level
 	mu.Unlock()
+}
+
+// SetLevelByName sets the current logging level with a name.
+func SetLevelByName(level string) {
+	switch strings.ToLower(level) {
+	case "debug":
+		SetLevel(DebugLevel)
+	case "info":
+		SetLevel(InfoLevel)
+	case "error":
+		SetLevel(ErrorLevel)
+	case "disabled":
+		SetLevel(DisabledLevel)
+	}
 }

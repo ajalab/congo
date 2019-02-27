@@ -20,6 +20,7 @@ var (
 	o           = flag.String("o", "", "destination path for generated test code")
 	ssa         = flag.Bool("ssa", false, "dump SSA")
 	ast         = flag.Bool("ast", false, "dump AST")
+	logLevel    = flag.String("log", "info", "log level (debug, info, error, disabled)")
 	funcName    = flag.String("f", "", "name of the target function")
 	runner      = flag.String("r", "", "test template")
 )
@@ -40,6 +41,8 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+
+	log.SetLevelByName(*logLevel)
 
 	targetPackagePath := flag.Arg(0)
 	var funcNames []string
