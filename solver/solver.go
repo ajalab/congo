@@ -519,7 +519,7 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 		return C.Z3_mk_bvor(s.ctx, x, y), nil
 	case token.XOR:
 		return C.Z3_mk_bvxor(s.ctx, x, y), nil
-	case token.AND_NOT
+	case token.AND_NOT:
 		return C.Z3_mk_bvand(s.ctx, x, C.Z3_mk_bvnot(s.ctx, y))
 	case token.SHL:
 		// TODO(ajalab)
