@@ -101,18 +101,68 @@ func AndNot1(a int64) bool {
 // ShiftLeft1 is a test case to check SHL.
 // congo:maxexec 2
 // congo:cover 1.0
-func ShiftLeft1(a int64) bool {
-	if a<<2 == 20 {
+func ShiftLeft1(n uint8) bool {
+	if uint8(1)<<n == 128 {
 		return true
 	}
 	return false
 }
 
 // ShiftLeft2 is a test case to check SHL.
-// !congo:maxexec 3
-// !congo:cover 1.0
-func ShiftLeft2(a int8) bool {
-	if a<<5 == -96 && a < 0 {
+// congo:maxexec 2
+// congo:cover 1.0
+func ShiftLeft2(n uint8) bool {
+	if int8(1)<<n == -128 {
+		return true
+	}
+	return false
+}
+
+// ShiftLeft3 is a test case to check SHL.
+// congo:maxexec 2
+// congo:cover 1.0
+func ShiftLeft3(n uint8) bool {
+	if int8(-1)<<n == -64 {
+		return true
+	}
+	return false
+}
+
+// ShiftLeft4 is a test case to check SHL.
+// congo:maxexec 2
+// congo:cover 1.0
+func ShiftLeft4(n uint8) bool {
+	if uint16(1)<<n == 4096 {
+		return true
+	}
+	return false
+}
+
+// ShiftLeft5 is a test case to check SHL.
+// congo:maxexec 2
+// congo:cover 1.0
+func ShiftLeft5(n uint16) bool {
+	if int8(1)<<n == -128 {
+		return true
+	}
+	return false
+}
+
+// ShiftRight1 is a test case to check SHR.
+// congo:maxexec 2
+// congo:cover 1.0
+func ShiftRight1(n uint8) bool {
+	if uint8(0x80)>>n == 0x4 {
+		return true
+	}
+	return false
+}
+
+// ShiftRight2 is a test case to check SHR.
+// congo:maxexec 2
+// congo:cover 1.0
+func ShiftRight2(n uint8) bool {
+	if int8(-0x80)>>n == -4 {
 		return true
 	}
 	return false

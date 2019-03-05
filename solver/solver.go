@@ -434,6 +434,32 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 	}
 }
 
+func z3MakeShift(ctx C.Z3_context, x, y C.Z3_ast, info types.BasicInfo, op token.Token) C.Z3_ast {
+	xsize := C.Z3_get_bv_sort_size(ctx, C.Z3_get_sort(ctx, x))
+	ysize := C.Z3_get_bv_sort_size(ctx, C.Z3_get_sort(ctx, y))
+	log.Debug.Print("x: ", C.GoString(C.Z3_ast_to_string(ctx, x)), ", y:", C.GoString(C.Z3_ast_to_string(ctx, y)))
+	log.Debug.Print("xsize: ", xsize, ", ysize ", ysize)
+	if xsize > ysize {
+		y = C.Z3_mk_zero_ext(ctx, xsize-ysize, y)
+	} else if xsize < ysize {
+		y = C.Z3_mk_extract(ctx, xsize-1, 0, y)
+	}
+	switch op {
+	case token.SHL:
+		return C.Z3_mk_bvshl(ctx, x, y)
+	case token.SHR:
+		// From Go language specification:
+		// The shift operators shift the left operand by the shift count specified by the right operand.
+		// They implement arithmetic shifts if the left operand is a signed integer and
+		// logical shifts if it is an unsigned integer.
+		if info&types.IsUnsigned > 0 {
+			return C.Z3_mk_bvlshr(ctx, x, y)
+		}
+		return C.Z3_mk_bvashr(ctx, x, y)
+	}
+	panic("unreachable")
+}
+
 func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 	switch ty := ty.(type) {
 	case *types.Basic:
@@ -522,10 +548,9 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 	case token.AND_NOT:
 		return C.Z3_mk_bvand(s.ctx, x, C.Z3_mk_bvnot(s.ctx, y)), nil
 	case token.SHL:
-		// TODO(ajalab)
-		// Go allows that operands of << have diffrent types (e.g., (int32(a) << uint8(b)),
-		// but Z3 doesn't.
-		return C.Z3_mk_bvshl(s.ctx, x, y), nil
+		fallthrough
+	case token.SHR:
+		return z3MakeShift(s.ctx, x, y, instr.X.Type().(*types.Basic).Info(), instr.Op), nil
 	case token.LAND:
 		return C.Z3_mk_and(s.ctx, 2, &args[0]), nil
 	case token.LOR:
