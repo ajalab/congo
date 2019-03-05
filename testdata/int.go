@@ -88,6 +88,16 @@ func Xor1(a, b, c int64) bool {
 	return false
 }
 
+// AndNot1 is a test case to check AND_NOT.
+// congo:maxexec 2
+// congo:cover 1.0
+func AndNot1(a int64) bool {
+	if 0xfa03&^a == 0xf000 {
+		return true
+	}
+	return false
+}
+
 // ShiftLeft1 is a test case to check SHL.
 // congo:maxexec 2
 // congo:cover 1.0
@@ -99,8 +109,8 @@ func ShiftLeft1(a int64) bool {
 }
 
 // ShiftLeft2 is a test case to check SHL.
-// congo:maxexec 3
-// congo:cover 1.0
+// !congo:maxexec 3
+// !congo:cover 1.0
 func ShiftLeft2(a int8) bool {
 	if a<<5 == -96 && a < 0 {
 		return true
