@@ -69,7 +69,10 @@ func CreateZ3Solver(symbols []ssa.Value, instrs []ssa.Instruction, isComplete bo
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load symbols")
 	}
-	s.loadTrace(instrs, isComplete)
+	err = s.loadTrace(instrs, isComplete)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load trace")
+	}
 
 	return s, nil
 }
@@ -127,7 +130,7 @@ func (s *Z3Solver) loadSymbols(symbols []ssa.Value) error {
 }
 
 // loadTrace loads a running trace to the solver.
-func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
+func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) error {
 	var currentBlock *ssa.BasicBlock
 	var prevBlock *ssa.BasicBlock
 	var callStack []*ssa.Call
@@ -198,8 +201,7 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 					s.asts[instr] = z3MakeLen(s.ctx, ast, arg.Type())
 				}
 			default:
-				log.Error.Fatalf("addConstraint: Not supported function:", fn)
-				panic("unimplemented")
+				return errors.Errorf("call of function %s is not supported", fn)
 			}
 		case *ssa.Return:
 			// len(callStack) becomes 0 when instr.Parent() is init() or main() of
@@ -249,10 +251,10 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) {
 				x:       instr.X,
 			})
 		default:
-			log.Error.Fatalf("panic caused by %v@%s: %[1]T but not supported", instr, instr.Parent())
-			panic("unreachable")
+			return errors.Errorf("panic caused by %v@%s: %[1]T is not supported", instr, instr.Parent())
 		}
 	}
+	return nil
 }
 
 // NumBranches returns the number of branch instructions.
