@@ -2,6 +2,16 @@ package testdata
 
 import "fmt"
 
+// IntNotEqual is a test case tot check != operator.
+// congo:maxexec 2
+// congo:cover 1.0
+func IntNotEqual(a int) bool {
+	if a != 100 {
+		return true
+	}
+	return false
+}
+
 // Neg1 is a test case to check integer negation.
 // congo:maxexec 2
 // congo:cover 1.0

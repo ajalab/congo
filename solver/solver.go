@@ -533,6 +533,8 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 		return z3MakeMod(s.ctx, x, y, ty), nil
 	case token.EQL:
 		return C.Z3_mk_eq(s.ctx, x, y), nil
+	case token.NEQ:
+		return C.Z3_mk_not(s.ctx, C.Z3_mk_eq(s.ctx, x, y)), nil
 	case token.LSS:
 		return z3MakeLt(s.ctx, x, y, ty), nil
 	case token.LEQ:
