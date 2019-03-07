@@ -106,7 +106,7 @@ func (s *Z3Solver) loadSymbol(symbol ssa.Value, name string) {
 		ast := C.Z3_mk_const(s.ctx, z3Symbol, sort)
 		s.asts[symbol] = ast
 	case *types.Pointer:
-		// ast represents a pointer value
+		// ast represents a symbolic address
 		sort := C.Z3_mk_int_sort(s.ctx)
 		ast := C.Z3_mk_const(s.ctx, z3Symbol, sort)
 		s.asts[symbol] = ast
@@ -501,8 +501,10 @@ func (s *Z3Solver) unop(instr *ssa.UnOp) (C.Z3_ast, error) {
 		return C.Z3_mk_bvneg(s.ctx, x), nil
 	case token.NOT:
 		return C.Z3_mk_not(s.ctx, x), nil
-		// case token.XOR:
-		// case token.ARROW:
+	case token.XOR:
+		sort := C.Z3_get_sort(s.ctx, x)
+		m := C.Z3_mk_int(s.ctx, C.int(-1), sort)
+		return C.Z3_mk_bvxor(s.ctx, m, x), nil
 	}
 	return nil, errors.Errorf("not implemented: %v", instr)
 }

@@ -2,10 +2,10 @@ package testdata
 
 import "fmt"
 
-// IntNeg is a test case to check integer negation.
+// Neg1 is a test case to check integer negation.
 // congo:maxexec 2
 // congo:cover 1.0
-func IntNeg(a int64) {
+func Neg1(a int64) {
 	if -a == 5 {
 		fmt.Println("-a == 5")
 	} else {
@@ -13,15 +13,35 @@ func IntNeg(a int64) {
 	}
 }
 
-// IntNegUnsigned is a test case to check unsigned integer negation.
+// Neg2 is a test case to check unsigned integer negation.
 // congo:maxexec 2
 // congo:cover 1.0
-func IntNegUnsigned(a uint64) {
+func Neg2(a uint64) {
 	if -a == 5 {
 		fmt.Println("-a == 5")
 	} else {
 		fmt.Println("-a != 5")
 	}
+}
+
+// Compl1 is a test case to check bitwise complement of signed integer.
+// congo:maxexec 2
+// congo:cover 1.0
+func Compl1(a int) bool {
+	if ^a == 10 {
+		return true
+	}
+	return false
+}
+
+// Compl2 is a test case to check bitwise complement of unsigned integer.
+// congo:maxexec 2
+// congo:cover 1.0
+func Compl2(a uint) bool {
+	if ^a == 10 {
+		return true
+	}
+	return false
 }
 
 // AddOverflow is a test case to check addition that may cause overflow.
