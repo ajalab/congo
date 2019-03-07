@@ -13,14 +13,24 @@ func PointerIsNil(a *int) {
 	}
 }
 
-// PointerIsNotNil is a test case to check nil handling.
+// PointerIsNotNil1 is a test case to check nil handling.
 // congo:maxexec 2
 // congo:cover 1.0
-func PointerIsNotNil(a *int) bool {
+func PointerIsNotNil1(a *int) bool {
 	if a == nil {
 		return false
 	}
 	return true
+}
+
+// PointerIsNotNil2 is a test case to check nil handling.
+// congo:maxexec 2
+// congo:cover 1.0
+func PointerIsNotNil2(a *int) bool {
+	if a != nil {
+		return true
+	}
+	return false
 }
 
 // PointerDeref is a test case to check pointer indirection.
