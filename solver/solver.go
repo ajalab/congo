@@ -160,14 +160,14 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) error {
 				s.asts[instr], err = s.unop(instr)
 			}
 			if err != nil {
-				log.Debug.Print(err)
+				log.Error.Print(err)
 			}
 
 		case *ssa.BinOp:
 			var err error
 			s.asts[instr], err = s.binop(instr)
 			if err != nil {
-				log.Debug.Print(err)
+				log.Error.Print(err)
 			}
 		case *ssa.Phi:
 			var v C.Z3_ast
@@ -214,7 +214,7 @@ func (s *Z3Solver) loadTrace(instrs []ssa.Instruction, isComplete bool) error {
 				case 1:
 					s.asts[callInstr] = s.get(instr.Results[0])
 				default:
-					log.Debug.Print("multiple return values are not supported")
+					log.Error.Print("multiple return values are not supported")
 				}
 				callStack = callStack[:len(callStack)-1]
 			}
@@ -474,11 +474,11 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 func (s *Z3Solver) deref(instr *ssa.UnOp) (C.Z3_ast, error) {
 	ref, ok := s.refs[instr.X]
 	if !ok {
-		return nil, errors.Errorf("reference does not exist: %v", instr.X)
+		return nil, errors.Errorf("deref: reference does not exist for %s = %s (-> %s)", instr.Name(), instr, instr.X)
 	}
 	ast := s.get(ref)
 	if ast == nil {
-		return nil, errors.Errorf("reference ast does not exist: %v", instr.X)
+		return nil, errors.Errorf("deref: reference ast does not exist: %v", instr.X)
 	}
 	if _, ok := s.nonnull[instr.X]; !ok {
 		s.branches = append(s.branches, &BranchDeref{
@@ -512,10 +512,10 @@ func (s *Z3Solver) binop(instr *ssa.BinOp) (C.Z3_ast, error) {
 	y := s.get(instr.Y)
 	ty := instr.X.Type()
 	if x == nil {
-		return nil, errors.Errorf("binop: left operand is not registered: %v", instr)
+		return nil, errors.Errorf("binop: left operand is not registered: %s = %s in %s", instr.Name(), instr, instr.Parent())
 	}
 	if y == nil {
-		return nil, errors.Errorf("binop: right operand is not registered: %v", instr)
+		return nil, errors.Errorf("binop: right operand is not registered: %s = %s in %s", instr.Name(), instr, instr.Parent())
 	}
 	args := []C.Z3_ast{x, y}
 	switch instr.Op {
@@ -569,7 +569,7 @@ func (s *Z3Solver) get(v ssa.Value) C.Z3_ast {
 	if a, ok := s.asts[v]; ok {
 		return a
 	}
-	log.Debug.Printf("get: Corresponding Z3 AST was not found for %s = %s in %s", v.Name(), v, v.Parent())
+	log.Error.Printf("get: corresponding Z3 AST was not found for %s = %s in %s", v.Name(), v, v.Parent())
 	return nil
 }
 
