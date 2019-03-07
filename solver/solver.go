@@ -439,8 +439,6 @@ func z3MakeGe(ctx C.Z3_context, x, y C.Z3_ast, ty types.Type) C.Z3_ast {
 func z3MakeShift(ctx C.Z3_context, x, y C.Z3_ast, info types.BasicInfo, op token.Token) C.Z3_ast {
 	xsize := C.Z3_get_bv_sort_size(ctx, C.Z3_get_sort(ctx, x))
 	ysize := C.Z3_get_bv_sort_size(ctx, C.Z3_get_sort(ctx, y))
-	log.Debug.Print("x: ", C.GoString(C.Z3_ast_to_string(ctx, x)), ", y:", C.GoString(C.Z3_ast_to_string(ctx, y)))
-	log.Debug.Print("xsize: ", xsize, ", ysize ", ysize)
 	if xsize > ysize {
 		y = C.Z3_mk_zero_ext(ctx, xsize-ysize, y)
 	} else if xsize < ysize {
