@@ -474,7 +474,7 @@ func z3MakeLen(ctx C.Z3_context, x C.Z3_ast, ty types.Type) C.Z3_ast {
 func (s *Z3Solver) deref(instr *ssa.UnOp) (C.Z3_ast, error) {
 	ref, ok := s.refs[instr.X]
 	if !ok {
-		return nil, errors.Errorf("deref: reference does not exist for %s = %s (-> %s)", instr.Name(), instr, instr.X)
+		return nil, errors.Errorf("deref: reference does not exist for %s = %s (-> %s) in %s", instr.Name(), instr, instr.X, instr.Parent())
 	}
 	ast := s.get(ref)
 	if ast == nil {
